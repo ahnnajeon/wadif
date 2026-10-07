@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10182b">
+  <meta name="description" content="하루에 한 번, 작은 선택이 여는 낯선 이야기. 와디프의 2분 모험.">
+  <title>와디프 · 오늘의 갈림길</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='19' fill='%23d9f1e7'/%3E%3Cpath d='M14 36c0-15 10-25 25-25 14 0 22 8 22 19 0 8-5 13-12 16-2 8-9 12-18 12-10 0-17-5-17-14Z' fill='%23427e70'/%3E%3Ccircle cx='43' cy='29' r='2.5' fill='%23203941'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./stories.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><img src="./dino.svg" alt="" width="45" height="45"><span>와디프 <small>WADIF</small></span></div>
+      <div class="day-tag" id="dayTag">오늘의 이야기</div>
+    </header>
+
+    <main id="app" class="game" aria-live="polite">
+      <div class="scene" id="scene" aria-hidden="true">
+        <div class="sky-glow"></div>
+        <div class="moon"></div>
+        <div class="stars"></div>
+        <div class="far-tower tower-left"></div>
+        <div class="far-tower tower-right"></div>
+        <div class="platform platform-left"></div>
+        <div class="platform platform-right"></div>
+        <div class="bridge"></div>
+        <div class="world-symbol" id="worldSymbol">✉</div>
+        <div class="portal portal-left"><span></span></div>
+        <div class="portal portal-right"><span></span></div>
+        <div class="hallway-art">
+          <div class="hallway-back"></div>
+          <div class="hallway-door"><span class="door-handle"></span></div>
+          <div class="hallway-floor"></div>
+          <div class="hallway-parcel"><span class="parcel-lid"></span><span class="parcel-tape"></span></div>
+        </div>
+        <div class="character" id="character"><img src="./dino.svg" alt=""></div>
+        <div class="scene-shadow"></div>
+      </div>
+
+      <section class="story-panel" id="storyPanel">
+        <p class="eyebrow" id="eyebrow">A tiny what-if, once a day</p>
+        <h1 id="title">오늘, 공룡에게 길이 두 개 생겼다.</h1>
+        <p id="storyText">작은 공룡 와디프가 종이 달린 다리 앞에 섰어요. 다리 아래에서는 어제의 별빛이 천천히 흐르고 있죠.</p>
+        <div class="actions" id="actions"><button class="primary-button" id="startButton" type="button">오늘의 모험 시작하기 <span aria-hidden="true">↗</span></button></div>
+        <p class="quiet-note" id="quietNote">약 2분 · 선택은 하루에 한 번</p>
+      </section>
+    </main>
+
+    <footer class="footer"><span>작은 선택, 조금 낯선 결과</span><span>Made for curious minds <span aria-hidden="true">✦</span></span></footer>
+  </div>
+</body>
+</html>
