@@ -40,8 +40,8 @@ button{font:inherit}
 .parcel-tape{position:absolute;left:47%;top:-9px;width:19px;height:100px;background:#ebd6aa7f;transform:skewY(4deg);clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
 .scene.is-parcel .sky-glow,.scene.is-parcel .moon,.scene.is-parcel .stars,.scene.is-parcel .far-tower,.scene.is-parcel .platform,.scene.is-parcel .bridge,.scene.is-parcel .portal,.scene.is-parcel .world-symbol,.scene.is-parcel .character{display:none}
 .scene.is-parcel .hallway-art{display:block}
-.scene.is-parcel.to-left .parcel-lid,.scene.is-parcel.is-reveal .parcel-lid{transform:translate(-14px,-14px) rotate(-12deg)}
-.scene.is-parcel.to-right .hallway-parcel{transform:translateX(-50%) translateY(18px) skewY(-4deg)}
+.scene.is-parcel.pick-0 .parcel-lid{transform:translate(-14px,-14px) rotate(-12deg)}
+.scene.is-parcel.pick-1 .hallway-parcel{transform:translateX(-50%) translateY(18px) skewY(-4deg)}
 .scene.is-parcel.is-reveal .hallway-parcel{filter:drop-shadow(0 0 18px #dfc9a356)}
 .story-panel{position:relative;z-index:4;width:min(100%,670px);text-align:center;padding:30px clamp(24px,5vw,49px) 24px;border:1px solid #e8f1eb2e;border-radius:25px;background:var(--panel);backdrop-filter:blur(18px);box-shadow:0 20px 65px #060e1c8c}
 .eyebrow{margin:0 0 10px;color:var(--mint);font-size:11px;font-weight:700;letter-spacing:.19em;text-transform:uppercase}
@@ -52,8 +52,11 @@ h1{margin:0;font-size:clamp(26px,3.4vw,40px);line-height:1.32;letter-spacing:-.0
 .actions button:hover{transform:translateY(-2px)}.actions button:focus-visible{outline:3px solid #f7dba1;outline-offset:3px}
 .primary-button{background:#d8e9d9;border:1px solid #effff0;color:#1b3037}.primary-button span{margin-left:18px}.primary-button:hover{background:#f2f7e9}
 .secondary-button{background:#ffffff0c;border:1px solid #dce9e04a;color:#f4f5ef}.secondary-button:hover{background:#ffffff20}
-.quiet-note{font-size:12px;color:#aab8bd;margin:16px 0 0}
-.quiet-note.is-act-two{display:inline-block;color:#1c3033;background:#cce5d7;border-radius:999px;padding:9px 15px;font-weight:700;letter-spacing:.01em}
+.choice-button{min-width:128px;background:#ffffff14;border:1px solid #dce9e080;color:#f4f5ef}.choice-button:hover{background:#ffffff26;border-color:#effff0}
+.next-prompt,.next-hint{flex-basis:100%;margin:0;word-break:keep-all}.next-prompt{color:#f4f5ef;font-size:15px;font-weight:600}.next-hint{margin-top:-7px;color:#aab8bd;font-size:12px}
+.actions .text-button{flex-basis:100%;min-height:0;padding:4px 8px;background:none;border:0;color:#aab8bd;font-weight:500;text-decoration:underline;text-underline-offset:3px}.actions .text-button:hover{transform:none;color:#f4f5ef}
+.quiet-note{font-size:12px;color:#aab8bd;margin:16px 0 0;word-break:keep-all}
+.quiet-note.is-act-two,.quiet-note.is-pill{display:inline-block;color:#1c3033;background:#cce5d7;border-radius:999px;padding:9px 15px;font-weight:700;letter-spacing:.01em}
 .footer{padding-top:12px;padding-bottom:20px;color:#94aab7;font-size:11px;letter-spacing:.04em}
 .footer span:last-child span{color:#e9d5ad}
 .scene.is-moving .character{left:55%;bottom:31%}.scene.to-left .character{left:28%;bottom:45%}.scene.to-right .character{left:70%;bottom:45%}
@@ -61,5 +64,5 @@ h1{margin:0;font-size:clamp(26px,3.4vw,40px);line-height:1.32;letter-spacing:-.0
 @keyframes float{50%{transform:translate(-50%,-7px)}}@keyframes breathe{50%{opacity:.5;transform:translateX(-50%) scale(1.08)}}@keyframes drift{to{background-position:150px 14px,273px 59px}}
 @keyframes symbol-hover{50%{transform:translate(-50%,-11px) rotate(4deg);opacity:.76}}
 @media(max-width:700px){.topbar{padding:16px 19px}.topbar .brand{font-size:19px}.topbar .brand img{width:40px;height:40px}.game{min-height:calc(100dvh - 125px);padding:0 12px 12px}.scene{bottom:0}.moon{top:16%;width:66px;height:66px;left:calc(50% - 33px)}.far-tower{width:95px;bottom:31%;height:37%}.tower-left{left:9%}.tower-right{right:9%}.platform{bottom:31%;height:12%}.bridge{bottom:35%;height:11%}.character{bottom:39%;width:46px;height:46px}.portal{bottom:52%;width:40px;height:76px;border-width:5px}.portal-left{left:16%}.portal-right{right:16%}.story-panel{padding:23px 20px 19px;border-radius:21px}.footer{padding:0 19px 16px}.footer span:last-child{display:none}.scene.is-moving .character{bottom:42%}.scene.to-left .character{left:20%;bottom:55%}.scene.to-right .character{left:79%;bottom:55%}}
-@media(max-width:700px){.hallway-door{width:47%;height:60%;bottom:30%}.hallway-back{width:110%;bottom:25%}.hallway-floor{height:42%}.hallway-parcel{width:113px;height:67px;bottom:39%}.parcel-lid{height:22px;top:-14px}.parcel-tape{height:78px;left:46%;width:15px}.quiet-note.is-act-two{border-radius:14px;line-height:1.5}}
+@media(max-width:700px){.hallway-door{width:47%;height:60%;bottom:30%}.hallway-back{width:110%;bottom:25%}.hallway-floor{height:42%}.hallway-parcel{width:113px;height:67px;bottom:39%}.parcel-lid{height:22px;top:-14px}.parcel-tape{height:78px;left:46%;width:15px}.quiet-note.is-act-two,.quiet-note.is-pill{border-radius:14px;line-height:1.5}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
