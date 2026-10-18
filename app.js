@@ -1,8 +1,9 @@
 (() => {
   "use strict";
 
-  const stories = window.WADIF_STORIES;
-  if (!Array.isArray(stories) || stories.length === 0) return;
+  const groups = window.WADIF_AGE_GROUPS;
+  const library = window.WADIF_STORIES;
+  if (!Array.isArray(groups) || !library) return;
   const config = window.WADIF_CONFIG || {};
 
   const $ = (id) => document.getElementById(id);
@@ -34,22 +35,26 @@
 
   const launchDate = Date.UTC(2026, 9, 1);
   const dayMs = 86400000;
+  const ageKey = "wadif:age";
   let dateKey = "";
+  let dayOrdinal = 0;
+  let age = null;
   let story = null;
   let episodeIndex = 0;
-  let stage = "intro";
-  let beatIndex = 0;
+  let stage = "age";
   let storageWorks = true;
   let revealTimer = null;
   let memoryResult = null;
   let memoryDateKey = "";
+  let memoryAge = null;
   let choiceOrder = [0, 1];
   let source = "direct";
   let memoryUid = "";
   let viaAgent = false;
 
-  // ?preview=1&ep=3&k=0 : read any episode without the daily limit, and without
-  // saving or sending data. ep = episode number (1–14); k = hidden condition 0 or 1 (optional).
+  // ?preview=1&age=20s&ep=2&k=0 : read any episode without the daily limit, and
+  // without saving or sending data. age = 10s|20s|30s|40s|50s, ep = episode
+  // number in that age group, k = hidden condition 0 or 1 (all optional).
   const params = (() => {
     try {
       return new URLSearchParams(globalThis.location?.search || "");
@@ -60,20 +65,37 @@
   const preview = params?.get("preview") === "1";
   const collecting = Boolean(config.endpoint) && !preview;
 
-  function localDate() {
+  const groupById = (id) => groups.find((group) => group.id === id) || null;
+  const mod = (n, m) => ((n % m) + m) % m;
+
+  function refreshDate() {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const day = now.getDate();
-    return {
-      key: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      ordinal: Math.round((Date.UTC(year, month - 1, day) - launchDate) / dayMs)
-    };
+    dateKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    dayOrdinal = Math.round((Date.UTC(year, month - 1, day) - launchDate) / dayMs);
   }
 
   function storageKey() {
-    return `wadif:v1:${dateKey}`;
+    return `wadif:v2:${dateKey}`;
   }
+
+  // Today's episode for an age group: one per day, rotating through the group.
+  function episodeFor(ageId) {
+    const list = library[ageId];
+    if (!Array.isArray(list) || list.length === 0) return -1;
+    const ep = Number.parseInt(params?.get("ep") ?? "", 10);
+    if (preview && ep >= 1 && ep <= list.length) return ep - 1;
+    return mod(dayOrdinal, list.length);
+  }
+
+  function storyFor(ageId) {
+    const index = episodeFor(ageId);
+    return index < 0 ? null : library[ageId][index];
+  }
+
+  // ---- browser storage (one result per day, remembered age group) ----
 
   function readResult() {
     if (memoryDateKey === dateKey && memoryResult) return memoryResult;
@@ -82,11 +104,13 @@
       const value = localStorage.getItem(storageKey());
       if (!value) return null;
       const data = JSON.parse(value);
+      const today = storyFor(data.age);
       if (
-        data.storyId !== story.id ||
+        !today ||
+        data.storyId !== today.id ||
         !Number.isInteger(data.choiceIndex) ||
         !Number.isInteger(data.endingIndex) ||
-        !story.choices[data.choiceIndex]?.endings[data.endingIndex]
+        !today.choices[data.choiceIndex]?.endings[data.endingIndex]
       ) return null;
       memoryResult = data;
       memoryDateKey = dateKey;
@@ -103,6 +127,28 @@
     if (!storageWorks || preview) return;
     try {
       localStorage.setItem(storageKey(), JSON.stringify(data));
+    } catch {
+      storageWorks = false;
+    }
+  }
+
+  function storedAge() {
+    if (memoryAge) return memoryAge;
+    if (preview) return groupById(params?.get("age")) ? params.get("age") : null;
+    if (!storageWorks) return null;
+    try {
+      const value = localStorage.getItem(ageKey);
+      return groupById(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveAge(id) {
+    memoryAge = id;
+    if (!storageWorks || preview) return;
+    try {
+      localStorage.setItem(ageKey, id);
     } catch {
       storageWorks = false;
     }
@@ -131,7 +177,7 @@
 
   function readSource() {
     try {
-      const param = new URLSearchParams(globalThis.location?.search || "").get("src");
+      const param = params?.get("src");
       if (param) return param.replace(/[^\w-]/g, "").slice(0, 30) || "direct";
       if (document.referrer) {
         const host = new URL(document.referrer).hostname;
@@ -166,9 +212,10 @@
   function track(event, fields) {
     if (!collecting || typeof fetch !== "function") return;
     const payload = {
-      v: 1,
+      v: 2,
       event,
       play_date: dateKey,
+      age,
       story_id: story.id,
       uid: userId(),
       src: source,
@@ -235,86 +282,81 @@
     return `‘${label}’을(를)`;
   }
 
-  function setStoryForToday() {
-    const today = localDate();
-    dateKey = today.key;
-    episodeIndex = ((today.ordinal % stories.length) + stories.length) % stories.length;
-    const ep = Number.parseInt(params?.get("ep") ?? "", 10);
-    if (preview && ep >= 1 && ep <= stories.length) episodeIndex = ep - 1;
-    story = stories[episodeIndex];
+  function setStoryForAge() {
+    const group = groupById(age);
+    episodeIndex = episodeFor(age);
+    story = episodeIndex < 0 ? null : library[age][episodeIndex];
+    if (!group || !story) {
+      story = null;
+      dayTag.textContent = preview ? "미리보기" : "오늘의 갈림길";
+      return;
+    }
     if (story.id === "unmarked-parcel") scene.classList.add("is-parcel");
     else scene.classList.remove("is-parcel");
-    const [symbol, ink, glow] = colors[episodeIndex % colors.length];
+    const groupIndex = groups.indexOf(group);
+    const [symbol, ink, glow] = colors[(groupIndex * 3 + episodeIndex) % colors.length];
     worldSymbol.textContent = symbol;
     scene.style.setProperty("--scene-symbol", ink);
     scene.style.setProperty("--scene-glow", glow);
-    dayTag.textContent = `${preview ? "미리보기" : "오늘의 이야기"} · ${String(episodeIndex + 1).padStart(2, "0")} / ${stories.length}`;
+    const count = library[age].length;
+    dayTag.textContent = `${preview ? "미리보기 · " : ""}${group.label} · ${episodeIndex + 1} / ${count}`;
   }
 
   // ---- story flow ----
 
-  function renderIntro() {
-    stage = "intro";
+  function renderAgePicker() {
+    stage = "age";
+    clearTimeout(revealTimer);
+    story = null;
     setScene();
+    dayTag.textContent = preview ? "미리보기" : "오늘의 갈림길";
     eyebrow.textContent = "A tiny what-if, once a day";
-    title.textContent = story.title;
-    storyText.textContent = story.teaser;
-    setActions(button("오늘의 이야기 시작하기 ↗", "primary-button", startStory));
-    if (preview) setNote("미리보기 · 저장도 집계도 되지 않아요. 새로고침하면 처음부터예요");
-    else setNote(storageWorks
-      ? "약 2분 · 선택은 이 브라우저에서 하루에 한 번"
-      : "브라우저 저장 기능이 꺼져 있어 하루 제한이 유지되지 않을 수 있어요");
+    title.textContent = "당신의 연령대는?";
+    storyText.textContent = "연령대에 맞는 일상의 갈림길을 하루에 한 편씩 보여 드려요.";
+    setActions(...groups.map((group) =>
+      button(group.label, "choice-button age-button", () => pickAge(group.id))
+    ));
+    setNote(collecting ? "고른 연령대와 선택은 이름 없이 집계돼요" : "고른 연령대는 이 브라우저에만 기억돼요");
   }
 
-  function startStory() {
-    const previous = readResult();
-    if (previous) {
-      renderEnding(previous);
-      return;
-    }
-    stage = "beat";
-    beatIndex = 0;
-    setScene("is-moving");
-    renderBeat();
+  function pickAge(id) {
+    if (stage !== "age" || !groupById(id) || !library[id]?.length) return;
+    age = id;
+    saveAge(id);
+    setStoryForAge();
+    renderChoice();
   }
 
-  function renderBeat() {
-    stage = "beat";
-    eyebrow.textContent = `오늘의 장면 · ${beatIndex + 1} / ${story.beats.length}`;
-    title.textContent = story.title;
-    storyText.textContent = story.beats[beatIndex];
-    const last = beatIndex === story.beats.length - 1;
-    setActions(button(last ? "선택의 순간으로 →" : "다음 장면 →", "primary-button", advanceBeat));
-    setNote("서두르지 않아도 좋아요");
+  function changeAge() {
+    if (stage !== "choice") return;
+    age = null;
+    memoryAge = null;
+    renderAgePicker();
   }
 
-  function advanceBeat() {
-    if (stage !== "beat") return;
-    if (beatIndex === story.beats.length - 1) renderChoice();
-    else {
-      beatIndex += 1;
-      renderBeat();
-    }
-  }
-
+  // One screen: the situation, the question and the two choices.
   function renderChoice() {
     stage = "choice";
     setScene();
     choiceOrder = shuffledOrder();
-    eyebrow.textContent = "어느 쪽으로 갈까요?";
-    title.textContent = story.question;
-    storyText.textContent = "선택 뒤의 일은 아무도 확실히 몰라요. 마음이 가는 쪽을 골라 주세요.\n고르고 나면, 같은 날 다른 쪽을 골랐을 때의 이야기도 보여 드릴게요.";
-    setActions(...choiceOrder.map((index) =>
-      button(story.choices[index].label, "choice-button", () => choose(index))
-    ));
+    eyebrow.textContent = `오늘의 갈림길 · ${groupById(age).label}`;
+    title.textContent = story.title;
+    storyText.textContent = story.setup;
+    setActions(
+      textLine(story.question, "next-prompt"),
+      ...choiceOrder.map((index) =>
+        button(story.choices[index].label, "choice-button", () => choose(index))
+      ),
+      button("연령대 바꾸기", "text-button", changeAge)
+    );
     setNote(collecting ? "고르면 오늘의 이야기가 정해져요 · 선택은 익명으로 집계돼요" : "고르면 오늘의 이야기가 정해져요");
   }
 
   function choose(choiceIndex) {
-    if (stage !== "choice" || !story.choices[choiceIndex]) return Promise.resolve(null);
+    if (stage !== "choice" || !story?.choices[choiceIndex]) return Promise.resolve(null);
     const previous = readResult();
     if (previous) {
-      renderEnding(previous);
+      boot();
       return Promise.resolve(previous);
     }
     const order = normalizeOrder(choiceOrder);
@@ -322,7 +364,7 @@
     const endingIndex = preview && story.choices[choiceIndex].endings[forced]
       ? forced
       : randomIndex(story.choices[choiceIndex].endings.length);
-    const result = { storyId: story.id, choiceIndex, endingIndex, order };
+    const result = { storyId: story.id, age, choiceIndex, endingIndex, order };
     saveResult(result);
     track("choice", {
       choice: choiceIndex,
@@ -342,7 +384,7 @@
       revealTimer = setTimeout(() => {
         renderEnding(result);
         resolve(result);
-      }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 100 : 1350);
+      }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 100 : 1100);
     });
   }
 
@@ -350,7 +392,7 @@
   // ending under the same hidden condition (endingIndex), i.e. the counterfactual.
   function renderEnding(result, view = "mine") {
     clearTimeout(revealTimer);
-    if (!result) return renderIntro();
+    if (!result) return boot();
     stage = "ending";
     const order = normalizeOrder(result.order);
     const mine = story.choices[result.choiceIndex];
@@ -377,8 +419,7 @@
     setActions(...(otherEnding
       ? [button(`${objectPhrase(other.label)} 골랐다면? ↗`, "primary-button", () => renderEnding(result, "other"))]
       : []));
-    if (story.actTwoTeaser) setNote(story.actTwoTeaser, true);
-    else if (!storageWorks) setNote("저장 기능이 꺼져 있어 새로 열면 선택이 초기화될 수 있어요");
+    if (!storageWorks) setNote("저장 기능이 꺼져 있어 새로 열면 선택이 초기화될 수 있어요");
     else if (otherEnding) setNote("같은 날, 같은 조건에서 다른 쪽을 골랐다면 어땠을까요?");
     else setNote("오늘의 이야기는 여기까지. 내일 새로운 갈림길에서 만나요 ✦");
   }
@@ -425,16 +466,50 @@
     renderEnding(updated, "other");
   }
 
-  function refreshDay() {
-    const today = localDate();
-    if (today.key === dateKey) return;
+  // Decide what to show for today: today's result if there is one,
+  // otherwise today's story for the remembered age group, otherwise the age question.
+  function boot() {
     clearTimeout(revealTimer);
+    refreshDate();
+    const today = readResult();
+    if (today) {
+      age = today.age;
+      setStoryForAge();
+      renderEnding(today);
+      return;
+    }
+    age = storedAge();
+    if (age && library[age]?.length) {
+      setStoryForAge();
+      renderChoice();
+    } else {
+      age = null;
+      renderAgePicker();
+    }
+  }
+
+  function refreshDay() {
+    const before = dateKey;
+    refreshDate();
+    if (dateKey === before) return;
     memoryResult = null;
     memoryDateKey = "";
-    setStoryForToday();
-    const result = readResult();
-    if (result) renderEnding(result);
-    else renderIntro();
+    boot();
+  }
+
+  function storySummary() {
+    if (stage === "age" || !story) {
+      return { status: "needs_age", ageGroups: groups.map((g) => ({ id: g.id, label: g.label })) };
+    }
+    if (stage === "ending") return { status: "completed", ageGroup: age, title: title.textContent };
+    return {
+      status: stage,
+      ageGroup: age,
+      title: story.title,
+      setup: story.setup,
+      question: story.question,
+      choices: story.choices.map((c) => c.label)
+    };
   }
 
   function registerWebMCP() {
@@ -448,29 +523,33 @@
       }
     };
     register({
-      name: "start_today_wadif_story",
-      title: "오늘의 와디프 시작",
-      description: "오늘의 이야기를 시작하고 첫 장면을 보여줍니다.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      name: "set_wadif_age_group",
+      title: "와디프 연령대 고르기",
+      description: "연령대를 고르고 그 연령대의 오늘 이야기를 엽니다. 오늘 선택을 마치기 전까지만 바꿀 수 있습니다.",
+      inputSchema: {
+        type: "object",
+        properties: { ageGroup: { type: "string", enum: groups.map((g) => g.id) } },
+        required: ["ageGroup"],
+        additionalProperties: false
+      },
       annotations: { readOnlyHint: false },
-      execute: () => {
+      execute: ({ ageGroup }) => {
         refreshDay();
-        if (stage === "ending") return { status: "completed", title: title.textContent };
-        if (stage === "intro") startStory();
-        return { status: stage, scene: storyText.textContent };
+        if (stage === "choice") changeAge();
+        if (stage !== "age") throw new Error("오늘 선택을 이미 마쳤어요.");
+        pickAge(ageGroup);
+        return storySummary();
       }
     });
     register({
-      name: "advance_today_wadif_scene",
-      title: "와디프 다음 장면",
-      description: "현재 장면을 읽고 다음 장면이나 선택지로 진행합니다.",
+      name: "read_today_wadif_story",
+      title: "오늘의 와디프 읽기",
+      description: "오늘의 상황, 질문, 선택지를 읽습니다. 연령대를 아직 고르지 않았다면 고를 수 있는 연령대를 돌려줍니다.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      annotations: { readOnlyHint: false },
+      annotations: { readOnlyHint: true },
       execute: () => {
         refreshDay();
-        if (stage !== "beat") throw new Error("먼저 오늘의 이야기를 시작해 주세요.");
-        advanceBeat();
-        return { status: stage, text: storyText.textContent, choices: stage === "choice" ? story.choices.map(c => c.label) : null };
+        return storySummary();
       }
     });
     register({
@@ -486,13 +565,14 @@
       annotations: { readOnlyHint: false },
       execute: async ({ choiceIndex }) => {
         refreshDay();
-        if (stage !== "choice") throw new Error("선택의 순간까지 이야기를 읽어 주세요.");
+        if (stage !== "choice") throw new Error("연령대를 고르고 오늘의 이야기를 연 뒤에 선택할 수 있어요.");
         if (choiceIndex !== 0 && choiceIndex !== 1) throw new Error("유효한 선택지는 0 또는 1입니다.");
         viaAgent = true;
         const result = await choose(choiceIndex);
         const other = story.choices[choiceIndex === 0 ? 1 : 0];
         return {
           status: "completed",
+          ageGroup: age,
           choice: story.choices[choiceIndex].label,
           ending: story.choices[choiceIndex].endings[result.endingIndex].title,
           condition: story.conditions?.[result.endingIndex] ?? null,
@@ -511,16 +591,17 @@
   }
 
   source = readSource();
-  setStoryForToday();
-  const result = readResult();
-  if (result) renderEnding(result);
-  else renderIntro();
+  boot();
   registerWebMCP();
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshDay();
   });
   window.addEventListener("storage", (event) => {
-    if (event.key === storageKey()) renderEnding(readResult());
+    if (event.key === storageKey()) {
+      memoryResult = null;
+      memoryDateKey = "";
+      boot();
+    }
   });
   window.setInterval(refreshDay, 60000);
 })();
