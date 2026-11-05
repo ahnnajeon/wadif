@@ -10,7 +10,8 @@ const seasonSource = fs.readFileSync(path.join(root, "seasons.js"), "utf8");
 const stored = new Map();
 const sent = [];
 
-function makeSession(isoDate, search = "") {
+// withSeasons: false leaves seasons.js out, to test the single-episode flow on its own.
+function makeSession(isoDate, search = "", { withSeasons = true } = {}) {
   const elements = new Map();
   const registeredTools = new Map();
   const intervalCalls = [];
@@ -90,7 +91,7 @@ function makeSession(isoDate, search = "") {
   };
   vm.createContext(context);
   vm.runInContext(storySource, context);
-  vm.runInContext(seasonSource, context);
+  if (withSeasons) vm.runInContext(seasonSource, context);
   vm.runInContext(source, context);
   return {
     get: (id) => elements.get(id),
@@ -111,8 +112,12 @@ function clickLabel(el, label) {
 }
 
 async function run() {
-  const s = makeSession("2026-10-01T12:00:00", "?src=card");
+  const singles = { withSeasons: false };
+  const s = makeSession("2026-10-01T12:00:00", "?src=card", singles);
   const { get, groups, library } = s;
+  const { seasons } = makeSession("2026-10-01T12:00:00");
+  stored.clear();
+  sent.length = 0;
 
   // Every age group has episodes; every episode has a setup, a question,
   // 2 hidden conditions and 2 choices x 2 endings; ids are unique.
@@ -203,14 +208,14 @@ async function run() {
   assert.equal(endingTitle, story.choices[0].endings[k].title);
 
   // Same day, reopened: same ending, no age question, nothing re-sent.
-  const reloaded = makeSession("2026-10-01T13:00:00");
+  const reloaded = makeSession("2026-10-01T13:00:00", "", singles);
   assert.equal(reloaded.get("title").textContent, endingTitle);
   reloaded.get("actions").children[0].click();
   assert.equal(clickable(reloaded.get("actions")).length, 1);
   assert.equal(sent.length, 2);
 
   // Next day: remembered age, next 20대 story; agent tools work and are labelled.
-  const tomorrow = makeSession("2026-10-02T12:00:00");
+  const tomorrow = makeSession("2026-10-02T12:00:00", "", singles);
   const next = library["20s"][1];
   assert.equal(tomorrow.get("title").textContent, next.title);
   const tools = tomorrow.registeredTools;
@@ -236,13 +241,13 @@ async function run() {
   assert.throws(() => tools.get("set_wadif_age_group").execute({ ageGroup: "10s" }));
 
   // Rotation wraps within the age group.
-  const later = makeSession(`2026-10-${String(1 + library["50s"].length * 2).padStart(2, "0")}T12:00:00`);
+  const later = makeSession(`2026-10-${String(1 + library["50s"].length * 2).padStart(2, "0")}T12:00:00`, "", singles);
   assert.equal(later.get("title").textContent, library["50s"][0].title);
 
   // Preview links: any age and episode, forced condition, nothing saved or sent.
   const storedBefore = new Map(stored);
   const sentBefore = sent.length;
-  const pv = makeSession("2026-10-01T15:00:00", "?preview=1&age=40s&ep=3&k=1");
+  const pv = makeSession("2026-10-01T15:00:00", "?preview=1&age=40s&ep=3&k=1", singles);
   const pvStory = library["40s"][2];
   assert.equal(pv.get("title").textContent, pvStory.title);
   assert.match(pv.get("dayTag").textContent, /미리보기/);
@@ -251,21 +256,24 @@ async function run() {
   assert.deepEqual([...stored.entries()], [...storedBefore.entries()]);
   assert.equal(sent.length, sentBefore);
 
-  await seasonFlow(library, s.seasons);
+  for (const group of groups) await seasonFlow(library, seasons, group);
 
   const total = groups.reduce((n, g) => n + library[g.id].length, 0);
   console.log(`${total} episodes in ${groups.length} age groups; age question, one-screen choice, counterfactual, follow-up question, data events with age, daily limit, rotation, agent tools and preview links passed.`);
 }
 
-// The 40대 season: five episodes by progress (not date), each opened by a bridge
-// from yesterday's ending, then the finale on the next visit, then the singles.
-async function seasonFlow(library, seasons) {
-  const season = seasons["40s"][0];
-  const ids = new Set(Object.values(library).flat().map((st) => st.id));
+// Each age group's season: five episodes by progress (not date), each opened by a
+// bridge from yesterday's ending, then the finale on the next visit, then the singles.
+const seasonIds = new Set();
+async function seasonFlow(library, seasons, group) {
+  const season = seasons[group.id]?.[0];
+  assert.ok(season, `${group.id} has a season`);
+  const singleIds = new Set(Object.values(library).flat().map((st) => st.id));
   assert.equal(season.episodes.length, 5);
+  assert.equal(season.sides.length, 2);
   for (const [i, ep] of season.episodes.entries()) {
-    assert.ok(!ids.has(ep.id), `duplicate id ${ep.id}`);
-    ids.add(ep.id);
+    assert.ok(!singleIds.has(ep.id) && !seasonIds.has(ep.id), `duplicate id ${ep.id}`);
+    seasonIds.add(ep.id);
     assert.ok(ep.day && ep.title && ep.setup && ep.question, ep.id);
     assert.equal(ep.conditions.length, 2, ep.id);
     assert.deepEqual(Array.from(ep.choices, (c) => c.side).sort(), [0, 1], ep.id);
@@ -277,14 +285,17 @@ async function seasonFlow(library, seasons) {
     if (i > 0) {
       assert.equal(ep.bridges.length, 2, ep.id);
       for (const row of ep.bridges) assert.ok(row.length === 2 && row.every(Boolean), ep.id);
+    } else {
+      assert.equal(ep.bridges, undefined, ep.id);
     }
   }
   const mins = Array.from(season.finale.endings, (e) => e.min);
-  assert.deepEqual(mins, [...mins].sort((a, b) => b - a));
-  assert.equal(mins.at(-1), 0);
+  assert.deepEqual(mins, [4, 2, 0]);
+  assert.ok(season.finale.same);
 
   stored.clear();
-  const path = [0, 1, 0, 1, 0]; // every pick on side 0 (가족 쪽)
+  // Every pick on side 0, whichever letter that is on each day.
+  const path = season.episodes.map((ep) => ep.choices.findIndex((c) => c.side === 0));
   const days = ["2026-11-02", "2026-11-03", "2026-11-05", "2026-11-06", "2026-11-07"]; // 11-04 skipped
   const picks = [];
   for (const [i, day] of days.entries()) {
@@ -292,17 +303,17 @@ async function seasonFlow(library, seasons) {
     const session = makeSession(`${day}T09:00:00`);
     if (i === 0) {
       assert.equal(session.get("title").textContent, "당신의 연령대는?");
-      clickLabel(session.get("actions"), "40대");
+      clickLabel(session.get("actions"), group.label);
     }
-    assert.equal(session.get("title").textContent, ep.title, `day ${i + 1}`);
-    assert.match(session.get("dayTag").textContent, new RegExp(`시즌 1 · ${i + 1} / 5`));
+    assert.equal(session.get("title").textContent, ep.title, `${group.id} day ${i + 1}`);
+    assert.equal(session.get("dayTag").textContent, `${group.label} · 시즌 1 · ${i + 1} / 5`);
     assert.equal(session.get("eyebrow").textContent, `${season.title} · ${ep.day}요일`);
     const opening = i === 0 ? season.intro : ep.bridges[picks[i - 1].choice][picks[i - 1].k];
     assert.equal(session.get("storyText").textContent, `${opening}\n\n${ep.setup}`);
 
     const before = sent.length;
     await clickLabel(session.get("actions"), ep.choices[path[i]].label);
-    const state = JSON.parse(stored.get("wadif:season:40s-s1"));
+    const state = JSON.parse(stored.get(`wadif:season:${season.id}`));
     assert.equal(state.picks.length, i + 1);
     const k = state.picks[i].k;
     picks.push({ choice: path[i], k });
@@ -310,8 +321,9 @@ async function seasonFlow(library, seasons) {
 
     const event = sent[before];
     assert.equal(sent.length, before + 1);
+    assert.equal(event.age, group.id);
     assert.equal(event.story_id, ep.id);
-    assert.equal(event.season, "40s-s1");
+    assert.equal(event.season, season.id);
     assert.equal(event.episode, i + 1);
     assert.equal(event.prev_choice, i === 0 ? undefined : picks[i - 1].choice);
     assert.equal(event.prev_condition, i === 0 ? undefined : picks[i - 1].k);
@@ -331,21 +343,22 @@ async function seasonFlow(library, seasons) {
     assert.equal(again.get("title").textContent, ep.choices[path[i]].endings[k].title);
   }
 
-  // Next visit: the finale, with the week's path and the 4~5 ending.
+  // Next visit: the finale, with the week's path and the top ending.
   const sentBefore = sent.length;
   const fin = makeSession("2026-11-09T08:00:00");
   const best = season.finale.endings[0];
   assert.equal(fin.get("title").textContent, best.title);
-  assert.match(fin.get("dayTag").textContent, /시즌 1 · 결산/);
-  assert.equal(fin.get("eyebrow").textContent, "이번 주 결산 · 가족 쪽 5번");
+  assert.equal(fin.get("dayTag").textContent, `${group.label} · 시즌 1 · 결산`);
+  assert.equal(fin.get("eyebrow").textContent, `이번 주 결산 · ${season.sides[0]} 5번`);
   const lines = fin.get("storyText").textContent.split("\n");
-  assert.equal(lines[0], `월 · ${season.episodes[0].choices[0].short} · ${season.episodes[0].choices[0].endings[picks[0].k].title}`);
-  assert.equal(lines[4].startsWith("금 · "), true);
+  const first = season.episodes[0].choices[path[0]];
+  assert.equal(lines[0], `월 · ${first.short} · ${first.endings[picks[0].k].title}`);
+  assert.ok(lines[4].startsWith("금 · "));
   assert.ok(fin.get("storyText").textContent.endsWith(best.text));
   clickLabel(fin.get("actions"), "모든 날 반대로 골랐다면? ↗");
   const worst = season.finale.endings.at(-1);
   assert.equal(fin.get("title").textContent, worst.title);
-  assert.ok(fin.get("storyText").textContent.startsWith(`월 · ${season.episodes[0].choices[1].short} · `));
+  assert.ok(fin.get("storyText").textContent.startsWith(`월 · ${season.episodes[0].choices[1 - path[0]].short} · `));
   assert.ok(!fin.get("storyText").textContent.includes(season.finale.same));
   clickLabel(fin.get("actions"), "← 내 결산으로");
   assert.equal(fin.get("title").textContent, best.title);
@@ -356,31 +369,36 @@ async function seasonFlow(library, seasons) {
   assert.equal(makeSession("2026-11-09T20:00:00").get("title").textContent, best.title);
   assert.equal(sent.length, sentBefore);
 
-  // The day after the finale: the 40대 singles, by date rotation.
+  // The day after the finale: that age group's singles, by date rotation.
   const ordinal = Math.round((Date.UTC(2026, 10, 10) - Date.UTC(2026, 9, 1)) / 86400000);
   const after = makeSession("2026-11-10T12:00:00");
-  assert.equal(after.get("title").textContent, library["40s"][mod(ordinal, library["40s"].length)].title);
-  assert.match(after.get("dayTag").textContent, /^40대 · \d \/ 3$/);
+  const list = library[group.id];
+  assert.equal(after.get("title").textContent, list[mod(ordinal, list.length)].title);
+  assert.equal(after.get("dayTag").textContent, `${group.label} · ${mod(ordinal, list.length) + 1} / ${list.length}`);
 
   // Preview of a season episode with a chosen yesterday, and of a finale.
   const storedBefore = new Map(stored);
   const sentAt = sent.length;
-  const pv = makeSession("2026-11-10T13:00:00", "?preview=1&age=40s&s=3&prev=B2&k=1");
+  const pv = makeSession("2026-11-10T13:00:00", `?preview=1&age=${group.id}&s=3&prev=B2&k=1`);
   const ep3 = season.episodes[2];
   assert.equal(pv.get("storyText").textContent, `${ep3.bridges[1][1]}\n\n${ep3.setup}`);
   await clickLabel(pv.get("actions"), ep3.choices[0].label);
   assert.equal(pv.get("title").textContent, ep3.choices[0].endings[1].title);
-  const pf = makeSession("2026-11-10T13:00:00", "?preview=1&age=40s&s=finale&path=A1A2A1A2A1");
-  const middle = season.finale.endings.find((e) => e.min === 2);
-  assert.equal(pf.get("title").textContent, middle.title); // A on every day: 3 on 가족 쪽
-  assert.equal(pf.get("storyText").textContent.split("\n")[1], `화 · ${season.episodes[1].choices[0].short} · ${season.episodes[1].choices[0].endings[1].title}`);
+  // A on every day; the count depends on which letter is side 0 each day.
+  const aCount = season.episodes.filter((ep) => ep.choices[0].side === 0).length;
+  const pf = makeSession("2026-11-10T13:00:00", `?preview=1&age=${group.id}&s=finale&path=A1A2A1A2A1`);
+  const shown = season.finale.endings.find((e) => aCount >= e.min);
+  const flipped = season.finale.endings.find((e) => 5 - aCount >= e.min);
+  assert.equal(pf.get("title").textContent, shown.title);
+  const tue = season.episodes[1].choices[0];
+  assert.equal(pf.get("storyText").textContent.split("\n")[1], `화 · ${tue.short} · ${tue.endings[1].title}`);
   clickLabel(pf.get("actions"), "모든 날 반대로 골랐다면? ↗");
-  assert.equal(pf.get("title").textContent, middle.title); // flipped: 2, the same ending
-  assert.ok(pf.get("storyText").textContent.endsWith(season.finale.same));
+  assert.equal(pf.get("title").textContent, flipped.title);
+  assert.equal(pf.get("storyText").textContent.endsWith(season.finale.same), shown === flipped);
   assert.deepEqual([...stored.entries()], [...storedBefore.entries()]);
   assert.equal(sent.length, sentAt);
 
-  console.log("40대 season: 5 episodes by progress with bridges, season data fields, finale on the next visit with the all-opposite week, then singles; season previews passed.");
+  console.log(`${group.label} season "${season.title}": 5 episodes with bridges, data fields, finale with the all-opposite week, then singles; previews passed.`);
 }
 
 function mod(n, m) {

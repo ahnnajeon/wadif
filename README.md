@@ -12,7 +12,7 @@ A one-minute what-if about everyday choices. Pick your age group, make one choic
 
 ## Seasons
 
-An age group can have a season (`seasons.js`): five episodes, Monday to Friday, then a weekend finale. A season plays before that age group's single episodes, which rotate by date once the season is done.
+Every age group has a season (`seasons.js`): five episodes, Monday to Friday, then a weekend finale. A season plays before that age group's single episodes, which rotate by date once the season is done.
 
 - **Progress, not dates.** The browser remembers how far the player has come (`wadif:season:<id>`). A missed day doesn't skip an episode.
 - **Bridges.** Episodes 2–5 open with a sentence that depends on yesterday's ending: yesterday's choice (A/B) × yesterday's hidden condition (①/②). Episode 1 opens with the season intro.
