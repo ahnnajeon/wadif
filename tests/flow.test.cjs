@@ -6,6 +6,7 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const source = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const storySource = fs.readFileSync(path.join(root, "stories.js"), "utf8");
+const seasonSource = fs.readFileSync(path.join(root, "seasons.js"), "utf8");
 const stored = new Map();
 const sent = [];
 
@@ -89,12 +90,14 @@ function makeSession(isoDate, search = "") {
   };
   vm.createContext(context);
   vm.runInContext(storySource, context);
+  vm.runInContext(seasonSource, context);
   vm.runInContext(source, context);
   return {
     get: (id) => elements.get(id),
     registeredTools,
     groups: context.window.WADIF_AGE_GROUPS,
     library: context.window.WADIF_STORIES,
+    seasons: context.window.WADIF_SEASONS,
     intervalCalls
   };
 }
@@ -248,8 +251,136 @@ async function run() {
   assert.deepEqual([...stored.entries()], [...storedBefore.entries()]);
   assert.equal(sent.length, sentBefore);
 
+  await seasonFlow(library, s.seasons);
+
   const total = groups.reduce((n, g) => n + library[g.id].length, 0);
   console.log(`${total} episodes in ${groups.length} age groups; age question, one-screen choice, counterfactual, follow-up question, data events with age, daily limit, rotation, agent tools and preview links passed.`);
+}
+
+// The 40대 season: five episodes by progress (not date), each opened by a bridge
+// from yesterday's ending, then the finale on the next visit, then the singles.
+async function seasonFlow(library, seasons) {
+  const season = seasons["40s"][0];
+  const ids = new Set(Object.values(library).flat().map((st) => st.id));
+  assert.equal(season.episodes.length, 5);
+  for (const [i, ep] of season.episodes.entries()) {
+    assert.ok(!ids.has(ep.id), `duplicate id ${ep.id}`);
+    ids.add(ep.id);
+    assert.ok(ep.day && ep.title && ep.setup && ep.question, ep.id);
+    assert.equal(ep.conditions.length, 2, ep.id);
+    assert.deepEqual(Array.from(ep.choices, (c) => c.side).sort(), [0, 1], ep.id);
+    for (const c of ep.choices) {
+      assert.ok(c.label && c.short, ep.id);
+      assert.equal(c.endings.length, 2, ep.id);
+      for (const e of c.endings) assert.ok(e.title && e.text, ep.id);
+    }
+    if (i > 0) {
+      assert.equal(ep.bridges.length, 2, ep.id);
+      for (const row of ep.bridges) assert.ok(row.length === 2 && row.every(Boolean), ep.id);
+    }
+  }
+  const mins = Array.from(season.finale.endings, (e) => e.min);
+  assert.deepEqual(mins, [...mins].sort((a, b) => b - a));
+  assert.equal(mins.at(-1), 0);
+
+  stored.clear();
+  const path = [0, 1, 0, 1, 0]; // every pick on side 0 (가족 쪽)
+  const days = ["2026-11-02", "2026-11-03", "2026-11-05", "2026-11-06", "2026-11-07"]; // 11-04 skipped
+  const picks = [];
+  for (const [i, day] of days.entries()) {
+    const ep = season.episodes[i];
+    const session = makeSession(`${day}T09:00:00`);
+    if (i === 0) {
+      assert.equal(session.get("title").textContent, "당신의 연령대는?");
+      clickLabel(session.get("actions"), "40대");
+    }
+    assert.equal(session.get("title").textContent, ep.title, `day ${i + 1}`);
+    assert.match(session.get("dayTag").textContent, new RegExp(`시즌 1 · ${i + 1} / 5`));
+    assert.equal(session.get("eyebrow").textContent, `${season.title} · ${ep.day}요일`);
+    const opening = i === 0 ? season.intro : ep.bridges[picks[i - 1].choice][picks[i - 1].k];
+    assert.equal(session.get("storyText").textContent, `${opening}\n\n${ep.setup}`);
+
+    const before = sent.length;
+    await clickLabel(session.get("actions"), ep.choices[path[i]].label);
+    const state = JSON.parse(stored.get("wadif:season:40s-s1"));
+    assert.equal(state.picks.length, i + 1);
+    const k = state.picks[i].k;
+    picks.push({ choice: path[i], k });
+    assert.equal(session.get("title").textContent, ep.choices[path[i]].endings[k].title);
+
+    const event = sent[before];
+    assert.equal(sent.length, before + 1);
+    assert.equal(event.story_id, ep.id);
+    assert.equal(event.season, "40s-s1");
+    assert.equal(event.episode, i + 1);
+    assert.equal(event.prev_choice, i === 0 ? undefined : picks[i - 1].choice);
+    assert.equal(event.prev_condition, i === 0 ? undefined : picks[i - 1].k);
+    assert.equal(event.side_count, i === 4 ? 5 : undefined);
+
+    // Counterfactual and follow-up question still work, and say what comes tomorrow.
+    session.get("actions").children[0].click();
+    assert.equal(session.get("title").textContent, ep.choices[1 - path[i]].endings[k].title);
+    clickLabel(session.get("actions"), ep.choices[path[i]].label);
+    assert.equal(sent.at(-1).event, "next");
+    assert.equal(sent.at(-1).episode, i + 1);
+    const hint = session.get("actions").children[1].textContent;
+    assert.ok(hint.includes(i === 4 ? "결산" : `${season.episodes[i + 1].day}요일`), hint);
+
+    // Reopened the same day: today's ending, not the next episode.
+    const again = makeSession(`${day}T21:00:00`);
+    assert.equal(again.get("title").textContent, ep.choices[path[i]].endings[k].title);
+  }
+
+  // Next visit: the finale, with the week's path and the 4~5 ending.
+  const sentBefore = sent.length;
+  const fin = makeSession("2026-11-09T08:00:00");
+  const best = season.finale.endings[0];
+  assert.equal(fin.get("title").textContent, best.title);
+  assert.match(fin.get("dayTag").textContent, /시즌 1 · 결산/);
+  assert.equal(fin.get("eyebrow").textContent, "이번 주 결산 · 가족 쪽 5번");
+  const lines = fin.get("storyText").textContent.split("\n");
+  assert.equal(lines[0], `월 · ${season.episodes[0].choices[0].short} · ${season.episodes[0].choices[0].endings[picks[0].k].title}`);
+  assert.equal(lines[4].startsWith("금 · "), true);
+  assert.ok(fin.get("storyText").textContent.endsWith(best.text));
+  clickLabel(fin.get("actions"), "모든 날 반대로 골랐다면? ↗");
+  const worst = season.finale.endings.at(-1);
+  assert.equal(fin.get("title").textContent, worst.title);
+  assert.ok(fin.get("storyText").textContent.startsWith(`월 · ${season.episodes[0].choices[1].short} · `));
+  assert.ok(!fin.get("storyText").textContent.includes(season.finale.same));
+  clickLabel(fin.get("actions"), "← 내 결산으로");
+  assert.equal(fin.get("title").textContent, best.title);
+  await assert.rejects(() => fin.registeredTools.get("choose_today_wadif_path").execute({ choiceIndex: 0 }));
+  assert.equal(fin.registeredTools.get("read_today_wadif_story").execute({}).status, "finale");
+
+  // Same day again: still the finale. Nothing was sent for it.
+  assert.equal(makeSession("2026-11-09T20:00:00").get("title").textContent, best.title);
+  assert.equal(sent.length, sentBefore);
+
+  // The day after the finale: the 40대 singles, by date rotation.
+  const ordinal = Math.round((Date.UTC(2026, 10, 10) - Date.UTC(2026, 9, 1)) / 86400000);
+  const after = makeSession("2026-11-10T12:00:00");
+  assert.equal(after.get("title").textContent, library["40s"][mod(ordinal, library["40s"].length)].title);
+  assert.match(after.get("dayTag").textContent, /^40대 · \d \/ 3$/);
+
+  // Preview of a season episode with a chosen yesterday, and of a finale.
+  const storedBefore = new Map(stored);
+  const sentAt = sent.length;
+  const pv = makeSession("2026-11-10T13:00:00", "?preview=1&age=40s&s=3&prev=B2&k=1");
+  const ep3 = season.episodes[2];
+  assert.equal(pv.get("storyText").textContent, `${ep3.bridges[1][1]}\n\n${ep3.setup}`);
+  await clickLabel(pv.get("actions"), ep3.choices[0].label);
+  assert.equal(pv.get("title").textContent, ep3.choices[0].endings[1].title);
+  const pf = makeSession("2026-11-10T13:00:00", "?preview=1&age=40s&s=finale&path=A1A2A1A2A1");
+  const middle = season.finale.endings.find((e) => e.min === 2);
+  assert.equal(pf.get("title").textContent, middle.title); // A on every day: 3 on 가족 쪽
+  assert.equal(pf.get("storyText").textContent.split("\n")[1], `화 · ${season.episodes[1].choices[0].short} · ${season.episodes[1].choices[0].endings[1].title}`);
+  clickLabel(pf.get("actions"), "모든 날 반대로 골랐다면? ↗");
+  assert.equal(pf.get("title").textContent, middle.title); // flipped: 2, the same ending
+  assert.ok(pf.get("storyText").textContent.endsWith(season.finale.same));
+  assert.deepEqual([...stored.entries()], [...storedBefore.entries()]);
+  assert.equal(sent.length, sentAt);
+
+  console.log("40대 season: 5 episodes by progress with bridges, season data fields, finale on the next visit with the all-opposite week, then singles; season previews passed.");
 }
 
 function mod(n, m) {
