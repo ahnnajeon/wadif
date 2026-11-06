@@ -4,6 +4,7 @@
   const groups = window.WADIF_AGE_GROUPS;
   const library = window.WADIF_STORIES || {};
   const seasons = window.WADIF_SEASONS || {};
+  const seasonArchive = window.WADIF_SEASON_ARCHIVE || {};
   if (!Array.isArray(groups)) return;
   const config = window.WADIF_CONFIG || {};
 
@@ -80,6 +81,8 @@
   const groupById = (id) => groups.find((group) => group.id === id) || null;
   const mod = (n, m) => ((n % m) + m) % m;
   const seasonsFor = (ageId) => (Array.isArray(seasons[ageId]) ? seasons[ageId] : []);
+  const archivedSeasonsFor = (ageId) => (Array.isArray(seasonArchive[ageId]) ? seasonArchive[ageId] : []);
+  const allSeasonsFor = (ageId) => [...seasonsFor(ageId), ...archivedSeasonsFor(ageId)];
   const hasContent = (ageId) => Boolean(library[ageId]?.length || seasonsFor(ageId).length);
 
   function refreshDate() {
@@ -115,6 +118,17 @@
     return season.finale.endings.find((ending) => count >= ending.min) || season.finale.endings.at(-1);
   }
 
+  // Narrative finales recall concrete moments, with no virtue/personality score.
+  // For the opposite week, flip the choice at each moment but retain its condition.
+  function finaleText(season, picks, flip = false) {
+    if (!season.finale.scenes) return finaleEnding(season, sideCount(season, picks, flip));
+    const paragraphs = season.finale.scenes.map((scene) => {
+      const pick = picks[scene.episode];
+      return scene.texts[flip ? 1 - pick.choice : pick.choice][pick.k];
+    });
+    return { title: season.finale.title, text: [...paragraphs, season.finale.closing].filter(Boolean).join("\n\n") };
+  }
+
   function episodePlan(season, epIndex, previous) {
     const episode = season.episodes[epIndex];
     const opening = epIndex === 0 ? season.intro : episode.bridges?.[previous?.choice]?.[previous?.k];
@@ -125,13 +139,13 @@
   function planFromResult(data) {
     if (!data || !groupById(data.age)) return null;
     if (data.finale) {
-      const season = seasonsFor(data.age).find((s) => s.id === data.finale);
+      const season = allSeasonsFor(data.age).find((s) => s.id === data.finale);
       if (!season) return null;
       const state = seasonState(season);
       return state.picks.length === season.episodes.length ? { kind: "finale", season, picks: state.picks } : null;
     }
     let found = null;
-    for (const season of seasonsFor(data.age)) {
+    for (const season of allSeasonsFor(data.age)) {
       const epIndex = season.episodes.findIndex((episode) => episode.id === data.storyId);
       if (epIndex >= 0) found = { kind: "episode", season, epIndex, story: season.episodes[epIndex], opening: "" };
     }
@@ -156,7 +170,21 @@
       const forced = previewPlan(ageId);
       if (forced) return forced;
     }
+    // Finish an already-started original story without changing its text or results.
+    // An archive is never offered to a new player.
+    for (const season of archivedSeasonsFor(ageId)) {
+      const state = seasonState(season);
+      if (!state.picks.length || state.finale) continue;
+      if (state.picks.length < season.episodes.length) {
+        return episodePlan(season, state.picks.length, state.picks.at(-1));
+      }
+      return { kind: "finale", season, picks: state.picks };
+    }
     for (const season of seasonsFor(ageId)) {
+      const original = archivedSeasonsFor(ageId).find((s) => s.id === season.replaces);
+      // A player who already lived the original proceeds to the new life instead
+      // of replaying revised versions of the same five days.
+      if (original && seasonState(original).picks.length) continue;
       const state = seasonState(season);
       const done = state.picks.length;
       if (done < season.episodes.length) return episodePlan(season, done, state.picks[done - 1]);
@@ -175,7 +203,7 @@
 
   function previewPlan(ageId) {
     const seasonNumber = Number.parseInt(params?.get("season") ?? "1", 10) || 1;
-    const season = seasonsFor(ageId)[seasonNumber - 1];
+    const season = seasonsFor(ageId).find((s) => s.number === seasonNumber);
     const s = params?.get("s");
     if (season && s === "finale") {
       const codes = String(params.get("path") || "").match(/[AB][12]?/gi) || [];
@@ -345,6 +373,7 @@
       play_date: dateKey,
       age,
       story_id: story.id,
+      story_version: story.version || plan?.season?.version || 1,
       uid: userId(),
       src: source,
       device: window.matchMedia?.("(max-width: 700px)").matches ? "mobile" : "desktop",
@@ -498,7 +527,7 @@
     dayTag.textContent = preview ? "미리보기" : "오늘의 갈림길";
     eyebrow.textContent = "A tiny what-if, once a day";
     title.textContent = "당신의 연령대는?";
-    storyText.textContent = "연령대에 맞는 일상의 갈림길을 하루에 한 편씩 보여 드려요.";
+    storyText.textContent = "연령대마다 여러 인물의 일상을 하루에 한 편씩 만나요. 이야기 속 직업과 가족관계는 주인공의 설정이에요.";
     setActions(...groups.map((group) =>
       button(group.label, "choice-button age-button", () => pickAge(group.id))
     ));
@@ -565,7 +594,9 @@
       }
       if (!preview && state.picks.length === plan.epIndex) {
         state.picks.push({ choice: choiceIndex, k: endingIndex, date: dateKey });
-        if (state.picks.length === plan.season.episodes.length) extra.side_count = sideCount(plan.season, state.picks);
+        if (state.picks.length === plan.season.episodes.length && !plan.season.finale.scenes) {
+          extra.side_count = sideCount(plan.season, state.picks);
+        }
         saveSeasonState(plan.season, state);
       }
     }
@@ -688,9 +719,9 @@
     renderEnding(updated, "other");
   }
 
-  // The weekend finale: the five days as walked, then the ending the count of
-  // side-0 choices leads to. view "other" flips every choice and keeps every
-  // hidden condition: the whole week's counterfactual.
+  // The weekend finale: the five days as walked and their closing scenes.
+  // Legacy seasons still use count-based endings. Both keep each hidden condition
+  // when showing the scripted alternative week.
   function renderFinale(view = "mine") {
     clearTimeout(revealTimer);
     stage = "finale";
@@ -699,7 +730,8 @@
     const side = season.sides?.[0] || "";
     const count = sideCount(season, picks);
     const shownCount = sideCount(season, picks, flip);
-    const ending = finaleEnding(season, shownCount);
+    const narrative = Boolean(season.finale.scenes);
+    const ending = finaleText(season, picks, flip);
     const path = picks.map((pick, i) => {
       const episode = season.episodes[i];
       const choice = episode.choices[flip ? 1 - pick.choice : pick.choice];
@@ -714,15 +746,15 @@
         token: "plain",
         tokenLabel: "같은 조건"
       });
-      const same = finaleEnding(season, count) === ending && season.finale.same;
+      const same = !narrative && finaleEnding(season, count) === ending && season.finale.same;
       eyebrow.textContent = "만약 모든 날 반대로 골랐다면";
       storyText.textContent = `${path}\n\n${ending.text}${same ? `\n\n${season.finale.same}` : ""}`;
       setActions(button("← 내 결산으로", "text-button", () => renderFinale()));
-      setNote(`숨은 조건은 다섯 날 모두 그대로 · ${side} ${shownCount}번`, true);
+      setNote(narrative ? "숨은 조건은 다섯 날 모두 그대로" : `숨은 조건은 다섯 날 모두 그대로 · ${side} ${shownCount}번`, true);
       return;
     }
     setStage("finale", { main: { place: "center", mood: "calm" } });
-    eyebrow.textContent = `이번 주 결산 · ${side} ${count}번`;
+    eyebrow.textContent = narrative ? `이번 주 결산 · ${season.title}` : `이번 주 결산 · ${side} ${count}번`;
     storyText.textContent = `${path}\n\n${ending.text}`;
     setActions(button("모든 날 반대로 골랐다면? ↗", "primary-button", () => renderFinale("other")));
     setNote("이번 주는 여기까지. 내일은 새 이야기가 기다려요 ✦");
