@@ -406,10 +406,11 @@
   const endingArt = (choiceIndex, k) => story?.choices[choiceIndex]?.endings[k]?.art || {};
   const shortLabel = (choice) => choice?.short || choice?.label || "";
 
-  function setActor(which, { place = "center", mood = "neutral", prop = "", label = "", look = "" } = {}) {
+  // accessory: the age group's item (10대 책가방 … 50대 돋보기), or "" before an age is picked.
+  function setActor(which, { place = "center", mood = "neutral", prop = "", sweat = false, label = "", look = "" } = {}, accessory = "") {
     $(`actor${which}`).className = ["actor", `at-${place}`, place === "left" ? "face-right" : "", look]
       .filter(Boolean).join(" ");
-    $(`face${which}`).innerHTML = art ? art.face(mood) : "";
+    $(`face${which}`).innerHTML = art ? art.face(mood, { sweat, age: accessory }) : "";
     $(`prop${which}`).innerHTML = art && prop ? art.prop(prop) : "";
     $(`label${which}`).textContent = label;
   }
@@ -419,8 +420,9 @@
     // The token takes the middle of the sky; the episode glyph and the moon step back.
     scene.classList.remove("stage-open");
     if (mode === "mine" || mode === "other") scene.classList.add("stage-open");
-    setActor("Main", main);
-    setActor("Twin", twin || { place: otherPlace(main.place || "right"), look: "is-hidden" });
+    const accessory = mode === "idle" ? "" : age || "";
+    setActor("Main", main, accessory);
+    setActor("Twin", twin || { place: otherPlace(main.place || "right"), look: "is-hidden" }, accessory);
     $("tokenIcon").innerHTML = art && token ? art.icon(token) : "";
     $("tokenLabel").textContent = tokenLabel;
   }
@@ -610,8 +612,8 @@
     if (view === "other" && otherEnding) {
       const otherArt = endingArt(otherIndex, result.endingIndex);
       setStage("other", {
-        main: { place, mood: mineArt.mood, prop: mineArt.prop, label: `나 · ${shortLabel(mine)}`, look: "is-dim" },
-        twin: { place: otherPlace(place), mood: otherArt.mood, prop: otherArt.prop, label: `만약 · ${shortLabel(other)}`, look: "is-twin" },
+        main: { ...mineArt, place, label: `나 · ${shortLabel(mine)}`, look: "is-dim" },
+        twin: { ...otherArt, place: otherPlace(place), label: `만약 · ${shortLabel(other)}`, look: "is-twin" },
         token: story.art?.conditions?.[result.endingIndex] || "plain",
         tokenLabel: "같은 조건"
       });
@@ -626,7 +628,7 @@
 
     const ending = mine.endings[result.endingIndex];
     setStage("mine", {
-      main: { place, mood: mineArt.mood, prop: mineArt.prop },
+      main: { ...mineArt, place },
       twin: otherEnding ? { place: otherPlace(place), look: "is-ghost" } : null,
       token: otherEnding ? "unknown" : ""
     });
