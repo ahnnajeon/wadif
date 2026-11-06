@@ -16,6 +16,8 @@
   const quietNote = $("quietNote");
   const scene = $("scene");
   const worldSymbol = $("worldSymbol");
+  const stageEl = $("stage");
+  const art = window.WADIF_ART || null;
 
   const colors = [
     ["✉", "#c9f1d9", "#a6e7ca70"],
@@ -64,9 +66,10 @@
   //   ?preview=1&age=40s&s=3&prev=B2&k=0     season episode 3, as if yesterday was B②
   //   ?preview=1&age=40s&s=finale&path=A1B2B1A2A1   the finale for that week
   // &season=2 picks a later season (default 1).
+  // config.query is a default for pages opened without a query (the hosted pilot preview).
   const params = (() => {
     try {
-      return new URLSearchParams(globalThis.location?.search || "");
+      return new URLSearchParams(globalThis.location?.search || config.query || "");
     } catch {
       return null;
     }
@@ -346,6 +349,9 @@
       src: source,
       device: window.matchMedia?.("(max-width: 700px)").matches ? "mobile" : "desktop",
       via: viaAgent ? "agent" : "ui",
+      // Which screen design the player saw. "v2" = StegoAhnna on the stage.
+      // Rows from before the redesign have no ui field.
+      ui: "v2",
       ...fields
     };
     try {
@@ -387,6 +393,41 @@
   // The character walks toward the side where that choice's button was shown.
   function sideOf(choiceIndex, order) {
     return normalizeOrder(order)[0] === choiceIndex ? "to-left" : "to-right";
+  }
+
+  // ---- StegoAhnna's stage ----
+  // Two StegoAhnnas, Main and Twin. place: left | center | right.
+  // look: is-ghost (a dark outline: the other day, not seen yet), is-twin (the
+  // other day, seen), is-dim (my day while looking at the other), is-hidden.
+  // On the left she is turned around, so both always face the middle token.
+
+  const placeOf = (choiceIndex, order) => (sideOf(choiceIndex, order) === "to-left" ? "left" : "right");
+  const otherPlace = (place) => (place === "left" ? "right" : "left");
+  const endingArt = (choiceIndex, k) => story?.choices[choiceIndex]?.endings[k]?.art || {};
+  const shortLabel = (choice) => choice?.short || choice?.label || "";
+
+  function setActor(which, { place = "center", mood = "neutral", prop = "", label = "", look = "" } = {}) {
+    $(`actor${which}`).className = ["actor", `at-${place}`, place === "left" ? "face-right" : "", look]
+      .filter(Boolean).join(" ");
+    $(`face${which}`).innerHTML = art ? art.face(mood) : "";
+    $(`prop${which}`).innerHTML = art && prop ? art.prop(prop) : "";
+    $(`label${which}`).textContent = label;
+  }
+
+  function setStage(mode, { main = {}, twin = null, token = "", tokenLabel = "" } = {}) {
+    stageEl.className = `stage mode-${mode}`;
+    // The token takes the middle of the sky; the episode glyph and the moon step back.
+    scene.classList.remove("stage-open");
+    if (mode === "mine" || mode === "other") scene.classList.add("stage-open");
+    setActor("Main", main);
+    setActor("Twin", twin || { place: otherPlace(main.place || "right"), look: "is-hidden" });
+    $("tokenIcon").innerHTML = art && token ? art.icon(token) : "";
+    $("tokenLabel").textContent = tokenLabel;
+  }
+
+  function replayButton() {
+    // Only on the hosted pilot preview: reload starts the episode again.
+    return preview && config.replay ? [button("미리보기 다시 하기", "text-button", () => globalThis.location.reload())] : [];
   }
 
   function setNote(text, asPill = false) {
@@ -451,6 +492,7 @@
     story = null;
     plan = null;
     setScene();
+    setStage("idle");
     dayTag.textContent = preview ? "미리보기" : "오늘의 갈림길";
     eyebrow.textContent = "A tiny what-if, once a day";
     title.textContent = "당신의 연령대는?";
@@ -479,6 +521,8 @@
   function renderChoice() {
     stage = "choice";
     setScene();
+    const setupArt = story.art?.setup || {};
+    setStage("setup", { main: { place: "center", mood: setupArt.mood, prop: setupArt.prop } });
     choiceOrder = shuffledOrder();
     eyebrow.textContent = plan.kind === "episode"
       ? `${plan.season.title} · ${story.day}요일`
@@ -533,6 +577,7 @@
     });
     stage = "revealing";
     setScene(sideOf(choiceIndex, order), `pick-${choiceIndex}`);
+    setStage("walk", { main: { place: placeOf(choiceIndex, order) } });
     eyebrow.textContent = "길이 천천히 열리고 있어요";
     title.textContent = "하루가 흘러가는 중";
     storyText.textContent = "선택 하나가 그다음 일들을 조금씩 바꿔 놓고 있어요…";
@@ -559,8 +604,17 @@
     const other = story.choices[otherIndex];
     const otherEnding = other?.endings[result.endingIndex];
     const condition = story.conditions?.[result.endingIndex];
+    const place = placeOf(result.choiceIndex, order);
+    const mineArt = endingArt(result.choiceIndex, result.endingIndex);
 
     if (view === "other" && otherEnding) {
+      const otherArt = endingArt(otherIndex, result.endingIndex);
+      setStage("other", {
+        main: { place, mood: mineArt.mood, prop: mineArt.prop, label: `나 · ${shortLabel(mine)}`, look: "is-dim" },
+        twin: { place: otherPlace(place), mood: otherArt.mood, prop: otherArt.prop, label: `만약 · ${shortLabel(other)}`, look: "is-twin" },
+        token: story.art?.conditions?.[result.endingIndex] || "plain",
+        tokenLabel: "같은 조건"
+      });
       setScene(sideOf(otherIndex, order), `pick-${otherIndex}`, "is-reveal");
       eyebrow.textContent = `만약 ${objectPhrase(other.label)} 골랐다면`;
       title.textContent = otherEnding.title;
@@ -571,13 +625,18 @@
     }
 
     const ending = mine.endings[result.endingIndex];
+    setStage("mine", {
+      main: { place, mood: mineArt.mood, prop: mineArt.prop },
+      twin: otherEnding ? { place: otherPlace(place), look: "is-ghost" } : null,
+      token: otherEnding ? "unknown" : ""
+    });
     setScene(sideOf(result.choiceIndex, order), `pick-${result.choiceIndex}`, "is-reveal");
     eyebrow.textContent = `나의 선택 · ${mine.label}`;
     title.textContent = ending.title;
     storyText.textContent = ending.text;
     setActions(...(otherEnding
       ? [button(`${objectPhrase(other.label)} 골랐다면? ↗`, "primary-button", () => renderEnding(result, "other"))]
-      : []));
+      : []), ...replayButton());
     if (!storageWorks) setNote("저장 기능이 꺼져 있어 새로 열면 선택이 초기화될 수 있어요");
     else if (otherEnding) setNote("같은 날, 같은 조건에서 다른 쪽을 골랐다면 어땠을까요?");
     else setNote(`오늘의 이야기는 여기까지. ${tomorrowLine()}`);
@@ -593,7 +652,8 @@
       setActions(
         textLine(`다음에도 이런 상황이라면 · ${answered.label}`, "next-prompt"),
         textLine(`기록했어요. ${tomorrowLine()}`, "next-hint"),
-        back
+        back,
+        ...replayButton()
       );
       return;
     }
@@ -646,6 +706,12 @@
     setScene("is-reveal");
     title.textContent = ending.title;
     if (flip) {
+      setStage("other", {
+        main: { place: "left", label: "이번 주", look: "is-dim" },
+        twin: { place: "right", mood: "calm", label: "반대로 고른 주", look: "is-twin" },
+        token: "plain",
+        tokenLabel: "같은 조건"
+      });
       const same = finaleEnding(season, count) === ending && season.finale.same;
       eyebrow.textContent = "만약 모든 날 반대로 골랐다면";
       storyText.textContent = `${path}\n\n${ending.text}${same ? `\n\n${season.finale.same}` : ""}`;
@@ -653,6 +719,7 @@
       setNote(`숨은 조건은 다섯 날 모두 그대로 · ${side} ${shownCount}번`, true);
       return;
     }
+    setStage("finale", { main: { place: "center", mood: "calm" } });
     eyebrow.textContent = `이번 주 결산 · ${side} ${count}번`;
     storyText.textContent = `${path}\n\n${ending.text}`;
     setActions(button("모든 날 반대로 골랐다면? ↗", "primary-button", () => renderFinale("other")));
