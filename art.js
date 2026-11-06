@@ -165,11 +165,12 @@
     // 50대 이상: half-moon reading glasses on a chain (drawn over the face)
     "50s": {
       over: `<g ${FRAME}>` +
-        `<path d="M-82,2 H-36 A23,17 0 0 1 -82,2 Z M34,3 H84 A25,18 0 0 1 34,3 Z" fill="#e6f2f7" opacity=".32"/>` +
-        `<path d="M-82,2 H-36 A23,17 0 0 1 -82,2 Z M34,3 H84 A25,18 0 0 1 34,3 Z" ${stroke(5, "#a87b16")}/>` +
-        `<path d="M-36,2 Q-1,-6 34,3" ${stroke(4.4, "#a87b16")}/>` +
-        `<path d="M-82,2 Q-108,30 -98,82" ${stroke(2.6, "#c9a227")} stroke-dasharray="2 5"/>` +
-        `<path d="M84,3 Q116,34 108,90" ${stroke(2.6, "#c9a227")} stroke-dasharray="2 5"/></g>`
+        `<path d="M-90,-1 H-28 A31,23 0 0 1 -90,-1 Z M28,0 H92 A32,24 0 0 1 28,0 Z" fill="#e6f2f7" opacity=".3"/>` +
+        `<path d="M-90,-1 H-28 A31,23 0 0 1 -90,-1 Z M28,0 H92 A32,24 0 0 1 28,0 Z" ${stroke(6.5, "#9a6f12")}/>` +
+        `<path d="M-84,4 Q-59,16 -36,4" ${stroke(2.2, "#ffffff")} opacity=".55"/><path d="M34,5 Q60,18 86,5" ${stroke(2.2, "#ffffff")} opacity=".55"/>` +
+        `<path d="M-28,-1 Q0,-10 28,0" ${stroke(5.5, "#9a6f12")}/>` +
+        `<path d="M-90,-1 Q-118,30 -106,88" ${stroke(3.2, "#c9a227")} stroke-dasharray="2.5 5.5"/>` +
+        `<path d="M92,0 Q124,34 116,96" ${stroke(3.2, "#c9a227")} stroke-dasharray="2.5 5.5"/></g>`
     }
   };
 
