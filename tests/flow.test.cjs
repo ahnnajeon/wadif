@@ -121,7 +121,7 @@ async function run() {
 
   // Every age group has episodes; every episode has a setup, a question,
   // 2 hidden conditions and 2 choices x 2 endings; ids are unique.
-  assert.deepEqual(Array.from(groups, (g) => g.label), ["10대", "20대", "30대", "40대", "50대 이상"]);
+  assert.deepEqual(Array.from(groups, (g) => g.label), ["10대", "20대", "30대", "40대", "50대", "60대", "70대 이상"]);
   const ids = new Set();
   for (const group of groups) {
     const list = library[group.id];
@@ -142,7 +142,7 @@ async function run() {
 
   // First visit: the age question.
   assert.equal(get("title").textContent, "당신의 연령대는?");
-  assert.deepEqual(labels(get("actions")), ["10대", "20대", "30대", "40대", "50대 이상"]);
+  assert.deepEqual(labels(get("actions")), ["10대", "20대", "30대", "40대", "50대", "60대", "70대 이상", "연령 선택 안 함"]);
 
   // Pick 20대 → today's 20대 story on one screen: question, two choices, change-age link.
   clickLabel(get("actions"), "20대");
@@ -262,6 +262,7 @@ async function run() {
     }
   }
   await revisedSeasonChecks(seasons);
+  await optionalAgeChecks();
 
   const total = groups.reduce((n, g) => n + library[g.id].length, 0);
   console.log(`${total} episodes in ${groups.length} age groups; age question, one-screen choice, counterfactual, follow-up question, data events with age, daily limit, rotation, agent tools and preview links passed.`);
@@ -501,6 +502,90 @@ async function revisedSeasonChecks(seasons) {
   console.log("Revised 40s: all 40 outcomes, incoming bridges, narrative finales, versioned events and historical continuity passed.");
 }
 
+async function optionalAgeChecks() {
+  stored.clear(); sent.length = 0;
+  // Explicit skip is a participant choice, never an inferred age.
+  const first = makeSession("2026-11-02T09:00:00");
+  const summary = first.registeredTools.get("set_wadif_age_group").execute({ ageGroup: "unspecified" });
+  const route = summary.storyAgeGroup;
+  assert.equal(summary.ageGroup, "unspecified");
+  assert.ok(first.groups.some((g) => g.id === route));
+  assert.match(first.get("dayTag").textContent, /주인공/);
+  const season = first.seasons[route][0];
+  await clickLabel(first.get("actions"), season.episodes[0].choices[0].label);
+  assert.equal(sent.at(-1).age, "unspecified");
+  assert.equal(sent.at(-1).story_age, route);
+  assert.equal(sent.at(-1).age_schema_version, 2);
+  const restored = makeSession("2026-11-02T21:00:00");
+  assert.equal(restored.get("title").textContent, first.get("title").textContent);
+  restored.get("actions").children[0].click();
+  clickLabel(restored.get("actions"), season.episodes[0].choices[1].label);
+  assert.equal(sent.at(-1).event, "next");
+  assert.equal(sent.at(-1).age, "unspecified");
+  assert.equal(sent.at(-1).story_age, route);
+  assert.equal(makeSession("2026-11-03T09:00:00").get("title").textContent, season.episodes[1].title);
+  // Finished narratives move to another age, retaining the old progress.
+  for (const s of first.seasons[route]) {
+    stored.set(`wadif:season:${s.id}`, JSON.stringify({picks: s.episodes.map(() => ({choice:0,k:0,date:"2026-11-02"})), finale:"2026-11-08"}));
+  }
+  const after = makeSession("2026-11-09T09:00:00");
+  const changed = after.registeredTools.get("read_today_wadif_story").execute();
+  assert.notEqual(changed.storyAgeGroup, route);
+  assert.equal(changed.ageGroup, "unspecified");
+  assert.ok(stored.get(`wadif:season:${season.id}`));
+  // Switching preferences is allowed before choosing, with no collector event.
+  const beforeSent = sent.length;
+  assert.equal(after.registeredTools.get("set_wadif_age_group").execute({ageGroup:"60s"}).ageGroup,"60s");
+  assert.equal(after.registeredTools.get("set_wadif_age_group").execute({ageGroup:"unspecified"}).ageGroup,"unspecified");
+  assert.equal(sent.length, beforeSent);
+  // A preview may specify the fictional age but must never save or collect it.
+  const snapshot = [...stored];
+  const preview = makeSession("2026-11-10T09:00:00", "?preview=1&age=unspecified&story_age=70s&s=1&k=1");
+  await clickLabel(preview.get("actions"), preview.seasons["70s"][0].episodes[0].choices[0].label);
+  assert.deepEqual([...stored], snapshot);
+  assert.equal(sent.length, beforeSent);
+  // Old 50+ preferences need a fresh choice. Old daily results keep their meaning.
+  stored.clear();
+  stored.set("wadif:age", "50s");
+  const legacy = makeSession("2026-11-11T09:00:00");
+  assert.equal(legacy.get("title").textContent, "당신의 연령대는?");
+  const oldStory = legacy.library["50s"][0];
+  stored.set("wadif:v2:2026-11-11", JSON.stringify({age:"50s",storyId:oldStory.id,choiceIndex:0,endingIndex:1,order:[0,1]}));
+  const oldDay = makeSession("2026-11-11T20:00:00");
+  assert.equal(oldDay.get("title").textContent, oldStory.choices[0].endings[1].title);
+  oldDay.get("actions").children[0].click();
+  clickLabel(oldDay.get("actions"), oldStory.choices[1].label);
+  assert.equal(sent.at(-1).age_schema_version, 1);
+  assert.equal(sent.at(-1).age, "50s");
+  const newDay = makeSession("2026-11-12T09:00:00");
+  assert.equal(newDay.get("title").textContent, "당신의 연령대는?");
+  clickLabel(newDay.get("actions"), "50대");
+  await clickLabel(newDay.get("actions"), newDay.seasons["50s"][0].episodes[0].choices[0].label);
+  assert.equal(sent.at(-1).age_schema_version, 2);
+  // Every new outcome and incoming bridge renders under both hidden conditions.
+  const finalSnapshot = [...stored], finalSent = sent.length;
+  for (const age of ["60s", "70s"]) {
+    const s = first.seasons[age][0];
+    for (let ep = 0; ep < 5; ep++) {
+      for (const prev of ["A1","A2","B1","B2"]) {
+        const pv = makeSession("2026-11-13T09:00:00", `?preview=1&age=${age}&s=${ep+1}&prev=${prev}`);
+        const opening = ep === 0 ? s.intro : s.episodes[ep].bridges[prev[0] === "A" ? 0 : 1][Number(prev[1])-1];
+        assert.equal(pv.get("storyText").textContent, `${opening}\n\n${s.episodes[ep].setup}`);
+      }
+      for (let c=0;c<2;c++) for (let k=0;k<2;k++) {
+        const pv=makeSession("2026-11-13T09:00:00", `?preview=1&age=${age}&s=${ep+1}&k=${k}`);
+        await clickLabel(pv.get("actions"), s.episodes[ep].choices[c].label);
+        assert.equal(pv.get("storyText").textContent,s.episodes[ep].choices[c].endings[k].text);
+        pv.get("actions").children[0].click();
+        assert.equal(pv.get("storyText").textContent,s.episodes[ep].choices[1-c].endings[k].text);
+      }
+    }
+  }
+  assert.deepEqual([...stored], finalSnapshot);
+  assert.equal(sent.length, finalSent);
+  console.log("Optional age: separate participant/story ages, continuity, rotation, switching, preview isolation and legacy 50+ migration passed; all 40 later-life outcomes and bridges passed.");
+}
+
 function mod(n, m) {
   return ((n % m) + m) % m;
 }
@@ -509,3 +594,4 @@ run().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+

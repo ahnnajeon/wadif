@@ -42,7 +42,10 @@
   const ageKey = "wadif:age";
   let dateKey = "";
   let dayOrdinal = 0;
-  let age = null;
+  let age = null; // Fictional protagonist age, independent of participant age.
+  let selectedAge = null;
+  let ageSchemaVersion = 2;
+  let memoryStoryAge = null;
   let story = null;
   // What today holds for the current age group:
   //   { kind: "single", story, index }               an episode from stories.js
@@ -237,6 +240,7 @@
   }
 
   function saveResult(data) {
+    data = { selectedAge, ageSchemaVersion, ...data };
     memoryResult = data;
     memoryDateKey = dateKey;
     if (!storageWorks || preview) return;
@@ -290,11 +294,14 @@
 
   function storedAge() {
     if (memoryAge) return memoryAge;
-    if (preview) return groupById(params?.get("age")) ? params.get("age") : null;
+    if (preview) return validAgeChoice(params?.get("age")) ? params.get("age") : null;
     if (!storageWorks) return null;
     try {
       const value = localStorage.getItem(ageKey);
-      return groupById(value) ? value : null;
+      // The old 50s preference meant 50+, so ask again rather than silently
+      // reinterpret it as 50–59. Existing daily results remain unchanged.
+      if (value === "50s" && localStorage.getItem("wadif:age-schema") !== "2") return null;
+      return validAgeChoice(value) ? value : null;
     } catch {
       return null;
     }
@@ -305,9 +312,57 @@
     if (!storageWorks || preview) return;
     try {
       localStorage.setItem(ageKey, id);
+      localStorage.setItem("wadif:age-schema", "2");
     } catch {
       storageWorks = false;
     }
+  }
+
+  function validAgeChoice(id) {
+    return id === "unspecified" || Boolean(groupById(id));
+  }
+
+  function openSelectedAge(id) {
+    selectedAge = id;
+    ageSchemaVersion = 2;
+    if (id !== "unspecified") {
+      age = id;
+      openPlan(planFor(age));
+      return;
+    }
+    let saved = memoryStoryAge;
+    if (preview) saved = params?.get("story_age");
+    else if (!saved && storageWorks) {
+      try { saved = localStorage.getItem("wadif:story-age"); } catch { storageWorks = false; }
+    }
+    const candidates = groups.filter((g) => hasContent(g.id));
+    if (!candidates.length) return renderAgePicker();
+    let index = candidates.findIndex((g) => g.id === saved);
+    if (index < 0) index = mod(dayOrdinal, candidates.length);
+    age = candidates[index].id;
+    let next = planFor(age);
+    // Finish the current narrative before moving to another protagonist age.
+    // Once every season is complete, rotate the standalone stories by date.
+    if (!preview && next?.kind === "single") {
+      for (let step = 1; step < candidates.length; step += 1) {
+        const candidate = candidates[mod(index + step, candidates.length)].id;
+        const candidatePlan = planFor(candidate);
+        if (candidatePlan && candidatePlan.kind !== "single") {
+          age = candidate;
+          next = candidatePlan;
+          break;
+        }
+      }
+      if (next?.kind === "single") {
+        age = candidates[mod(dayOrdinal, candidates.length)].id;
+        next = planFor(age);
+      }
+    }
+    memoryStoryAge = age;
+    if (!preview && storageWorks) {
+      try { localStorage.setItem("wadif:story-age", age); } catch { storageWorks = false; }
+    }
+    openPlan(next);
   }
 
   function randomIndex(length) {
@@ -371,7 +426,9 @@
       v: 2,
       event,
       play_date: dateKey,
-      age,
+      age: selectedAge || age,
+      story_age: age,
+      age_schema_version: ageSchemaVersion,
       story_id: story.id,
       story_version: story.version || plan?.season?.version || 1,
       uid: userId(),
@@ -494,7 +551,7 @@
     worldSymbol.textContent = symbol;
     scene.style.setProperty("--scene-symbol", ink);
     scene.style.setProperty("--scene-glow", glow);
-    const prefix = preview ? "미리보기 · " : "";
+    const prefix = (preview ? "미리보기 · " : "") + (selectedAge === "unspecified" ? "주인공 " : "");
     if (plan.kind === "single") {
       dayTag.textContent = `${prefix}${group.label} · ${plan.index + 1} / ${library[age].length}`;
     } else {
@@ -527,23 +584,23 @@
     dayTag.textContent = preview ? "미리보기" : "오늘의 갈림길";
     eyebrow.textContent = "A tiny what-if, once a day";
     title.textContent = "당신의 연령대는?";
-    storyText.textContent = "연령대마다 여러 인물의 일상을 하루에 한 편씩 만나요. 이야기 속 직업과 가족관계는 주인공의 설정이에요.";
+    storyText.textContent = "연령대마다 여러 인물의 일상을 하루에 한 편씩 만나요. 이야기 속 직업과 가족관계는 주인공의 설정이에요. 연령을 선택하지 않으면 여러 연령대의 이야기를 차례로 만나요.";
     setActions(...groups.map((group) =>
       button(group.label, "choice-button age-button", () => pickAge(group.id))
-    ));
+    ), button("연령 선택 안 함", "choice-button age-button", () => pickAge("unspecified")));
     setNote(collecting ? "고른 연령대와 선택은 이름 없이 집계돼요" : "고른 연령대는 이 브라우저에만 기억돼요");
   }
 
   function pickAge(id) {
-    if (stage !== "age" || !groupById(id) || !hasContent(id)) return;
-    age = id;
+    if (stage !== "age" || !validAgeChoice(id) || (id !== "unspecified" && !hasContent(id))) return;
     saveAge(id);
-    openPlan(planFor(id));
+    openSelectedAge(id);
   }
 
   function changeAge() {
     if (stage !== "choice") return;
     age = null;
+    selectedAge = null;
     memoryAge = null;
     renderAgePicker();
   }
@@ -582,7 +639,7 @@
     const endingIndex = preview && story.choices[choiceIndex].endings[forced]
       ? forced
       : randomIndex(story.choices[choiceIndex].endings.length);
-    const result = { storyId: story.id, age, choiceIndex, endingIndex, order };
+    const result = { storyId: story.id, age, selectedAge, ageSchemaVersion, choiceIndex, endingIndex, order };
     const extra = seasonFields();
     if (plan.kind === "episode") {
       Object.assign(result, extra);
@@ -788,14 +845,16 @@
     const today = readResult();
     if (today) {
       age = today.age;
+      selectedAge = today.selectedAge || today.age;
+      ageSchemaVersion = today.ageSchemaVersion || 1;
       applyPlan(planFromResult(today));
       if (plan?.kind === "finale") renderFinale();
       else renderEnding(today);
       return;
     }
-    age = storedAge();
-    if (age && hasContent(age)) {
-      openPlan(planFor(age));
+    const remembered = storedAge();
+    if (remembered && (remembered === "unspecified" || hasContent(remembered))) {
+      openSelectedAge(remembered);
     } else {
       age = null;
       renderAgePicker();
@@ -813,13 +872,13 @@
 
   function storySummary() {
     if (stage === "age" || (!story && stage !== "finale")) {
-      return { status: "needs_age", ageGroups: groups.map((g) => ({ id: g.id, label: g.label })) };
+      return { status: "needs_age", ageGroups: [...groups.map((g) => ({ id: g.id, label: g.label })), { id: "unspecified", label: "연령 선택 안 함" }] };
     }
-    if (stage === "ending") return { status: "completed", ageGroup: age, title: title.textContent };
-    if (stage === "finale") return { status: "finale", ageGroup: age, title: title.textContent, text: storyText.textContent };
+    if (stage === "ending") return { status: "completed", ageGroup: selectedAge || age, storyAgeGroup: age, title: title.textContent };
+    if (stage === "finale") return { status: "finale", ageGroup: selectedAge || age, storyAgeGroup: age, title: title.textContent, text: storyText.textContent };
     return {
       status: stage,
-      ageGroup: age,
+      ageGroup: selectedAge || age, storyAgeGroup: age,
       title: story.title,
       setup: story.setup,
       question: story.question,
@@ -840,10 +899,10 @@
     register({
       name: "set_wadif_age_group",
       title: "와디프 연령대 고르기",
-      description: "연령대를 고르고 그 연령대의 오늘 이야기를 엽니다. 오늘 선택을 마치기 전까지만 바꿀 수 있습니다.",
+      description: "연령대를 고르거나 unspecified로 건너뛰고 오늘 이야기를 엽니다. 오늘 선택을 마치기 전까지만 바꿀 수 있습니다.",
       inputSchema: {
         type: "object",
-        properties: { ageGroup: { type: "string", enum: groups.map((g) => g.id) } },
+        properties: { ageGroup: { type: "string", enum: [...groups.map((g) => g.id), "unspecified"] } },
         required: ["ageGroup"],
         additionalProperties: false
       },
@@ -888,7 +947,7 @@
         const other = story.choices[choiceIndex === 0 ? 1 : 0];
         return {
           status: "completed",
-          ageGroup: age,
+          ageGroup: selectedAge || age, storyAgeGroup: age,
           choice: story.choices[choiceIndex].label,
           ending: story.choices[choiceIndex].endings[result.endingIndex].title,
           condition: story.conditions?.[result.endingIndex] ?? null,
@@ -921,3 +980,4 @@
   });
   window.setInterval(refreshDay, 60000);
 })();
+
