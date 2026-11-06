@@ -839,6 +839,9 @@ window.WADIF_SEASONS = {
           setup: "월요일 8시 10분. 금요일 3시에 일이 두 개 겹쳐 있다. 학교운영위원회. 그리고 하린의 학예회. 현관에서 리코더가 눈에 들어온다. 하린의 책상 위다. 오늘 음악 시간이 있다고 했다.",
           question: "어떻게 할까?",
           conditions: ["오늘 리코더 수행평가가 있었다", "짝이 여분 리코더를 갖고 있었다"],
+          // Stage art (art.js). The setup picture shows only the situation, so it
+          // can't lean the player toward either choice.
+          art: { setup: { mood: "neutral", prop: "recorder" }, conditions: ["test", "spare"] },
           choices: [
             {
               label: "하린 학교에 갖다준다",
@@ -847,11 +850,13 @@ window.WADIF_SEASONS = {
               endings: [
                 {
                   title: "교문 앞의 하린",
-                  text: "하린의 얼굴이 환해졌다. 수행평가는 A였다. 나는 15분 지각했다. 둘 다 기록에 남았다."
+                  text: "하린의 얼굴이 환해졌다. 수행평가는 A였다. 나는 15분 지각했다. 둘 다 기록에 남았다.",
+                  art: { mood: "glad" }
                 },
                 {
                   title: "헛걸음",
-                  text: "짝이 빌려준다고 했단다. 리코더는 필요 없었다. 나도 필요 없었다. 행정실 앞을 지나던 교장 선생님이 시계를 봤다."
+                  text: "짝이 빌려준다고 했단다. 리코더는 필요 없었다. 나도 필요 없었다. 행정실 앞을 지나던 교장 선생님이 시계를 봤다.",
+                  art: { mood: "blank", prop: "recorder" }
                 }
               ]
             },
@@ -862,11 +867,13 @@ window.WADIF_SEASONS = {
               endings: [
                 {
                   title: "말없는 저녁",
-                  text: "저녁 내내 하린은 말이 없었다. 수행평가 날이었다고 한다. 배우자가 알려 줬다. 하린은 알려 주지 않았다."
+                  text: "저녁 내내 하린은 말이 없었다. 수행평가 날이었다고 한다. 배우자가 알려 줬다. 하린은 알려 주지 않았다.",
+                  art: { mood: "sad", prop: "recorder" }
                 },
                 {
                   title: "아무 일 없던 월요일",
-                  text: "하린은 짝의 리코더를 불었다. 나는 학운위 자료 목차를 짰다. 아무 일도 없었다. 대부분의 날이 그렇다."
+                  text: "하린은 짝의 리코더를 불었다. 나는 학운위 자료 목차를 짰다. 아무 일도 없었다. 대부분의 날이 그렇다.",
+                  art: { mood: "calm", prop: "papers" }
                 }
               ]
             }

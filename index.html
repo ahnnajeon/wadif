@@ -6,17 +6,19 @@
   <meta name="theme-color" content="#10182b">
   <meta name="description" content="하루에 한 번, 누구나 한 번쯤 고민해 봤을 선택. 내가 고른 쪽의 결과와 고르지 않은 쪽의 결과까지 보는 2분짜리 이야기.">
   <title>와디프 · 오늘의 갈림길</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='19' fill='%23d9f1e7'/%3E%3Cpath d='M14 36c0-15 10-25 25-25 14 0 22 8 22 19 0 8-5 13-12 16-2 8-9 12-18 12-10 0-17-5-17-14Z' fill='%23427e70'/%3E%3Ccircle cx='43' cy='29' r='2.5' fill='%23203941'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/webp" href="./img/stego-icon.webp">
+  <link rel="preload" as="image" href="./img/stego-body.webp">
   <link rel="stylesheet" href="./styles.css">
   <script src="./config.js" defer></script>
   <script src="./stories.js" defer></script>
   <script src="./seasons.js" defer></script>
+  <script src="./art.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><img src="./dino.svg" alt="" width="45" height="45"><span>와디프 <small>WADIF</small></span></div>
+      <div class="brand"><img src="./img/stego-icon.webp" alt="" width="45" height="45"><span>와디프 <small>WADIF</small></span></div>
       <div class="day-tag" id="dayTag">오늘의 이야기</div>
     </header>
 
@@ -39,8 +41,26 @@
           <div class="hallway-floor"></div>
           <div class="hallway-parcel"><span class="parcel-lid"></span><span class="parcel-tape"></span></div>
         </div>
-        <div class="character" id="character"><img src="./dino.svg" alt=""></div>
         <div class="scene-shadow"></div>
+      </div>
+
+      <!-- StegoAhnna's stage. After a choice, the right and left pedestals hold
+           the day as chosen and the day as it would have gone; the token between
+           them is the hidden condition, the same for both. -->
+      <div class="stage" id="stage" aria-hidden="true">
+        <div class="pedestal ped-left"></div>
+        <div class="pedestal ped-center"></div>
+        <div class="pedestal ped-right"></div>
+        <div class="stage-link"></div>
+        <div class="token" id="stageToken"><span class="token-icon" id="tokenIcon"></span><span class="token-label" id="tokenLabel"></span></div>
+        <div class="actor at-center" id="actorMain">
+          <p class="actor-label" id="labelMain"></p>
+          <div class="actor-art"><img src="./img/stego-body.webp" alt="" width="400" height="304"><svg class="face" id="faceMain" viewBox="0 0 560 425"></svg><span class="actor-prop" id="propMain"></span></div>
+        </div>
+        <div class="actor at-right is-hidden" id="actorTwin">
+          <p class="actor-label" id="labelTwin"></p>
+          <div class="actor-art"><img src="./img/stego-body.webp" alt="" width="400" height="304"><svg class="face" id="faceTwin" viewBox="0 0 560 425"></svg><span class="actor-prop" id="propTwin"></span></div>
+        </div>
       </div>
 
       <section class="story-panel" id="storyPanel">
