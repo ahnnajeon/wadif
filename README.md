@@ -6,7 +6,7 @@ A one-minute what-if about everyday choices. Pick your age group, make one choic
 
 ## How it works
 
-1. The first visit asks for an age group (10대, 20대, 30대, 40대, 50대 이상). The browser remembers it; "연령대 바꾸기" changes it before today's choice.
+1. The first visit asks for an age group (10대, 20대, 30대, 40대, 50대, 60대, 70대 이상) or **연령 선택 안 함**. The browser remembers it; "연령대 바꾸기" changes it before today's choice.
 2. One screen shows today's situation for that age group, the question and two choices. One episode a day.
 3. After the choice, your ending appears, then the other choice's ending under the same hidden condition, then one follow-up question: "next time, which would you pick?"
 
@@ -16,7 +16,7 @@ Every age group has a season (`seasons.js`): five episodes, Monday to Friday, th
 
 - **Progress, not dates.** The browser remembers how far the player has come (`wadif:season:<id>`). A missed day doesn't skip an episode.
 - **Bridges.** Episodes 2–5 open with a sentence that depends on yesterday's ending: yesterday's choice (A/B) × yesterday's hidden condition (①/②). Episode 1 opens with the season intro.
-- **Finale.** On the visit after episode 5, the finale lists the week as walked. The revised 40대 seasons close with specific scenes selected by the choices and conditions on those days. They do not rate the player as a parent, colleague or student. Older seasons still use their original side-count endings. "모든 날 반대로 골랐다면" flips all five choices and keeps all five hidden conditions within the authored story.
+- **Finale.** On the visit after episode 5, the finale lists the week as walked. The revised 40대 and new 60대/70대 seasons close with specific scenes selected by the choices and conditions on those days. They do not rate the player as a parent, colleague or student. Older seasons still use their original side-count endings. "모든 날 반대로 골랐다면" flips all five choices and keeps all five hidden conditions within the authored story.
 
 ### 40대: more than one life
 
@@ -27,6 +27,16 @@ Next comes the revised **금요일 3시** (season 1, version 2): a school admini
 These are fictional roles, not assumptions about the player's household. A fresh 40대 session starts with season 2; preview links select a season by its `number`, not its position in the array.
 
 Original `40s-s1` text is retained in `WADIF_SEASON_ARCHIVE`. Existing players finish that original season with unchanged outcomes, then receive the new life. They are not forced to replay its revised replacement, `40s-s1-v2`. Saved results and progress are never relabelled as new text.
+
+### 60대 / 70대 이상 and optional age
+
+- **첫 공연 (60대):** 64-year-old retired Park Sunwoo prepares for a community band's first café performance. New pleasures, paid work, learning and friendships coexist without a successful-aging score.
+- **다음 약속 (70대 이상):** 73-year-old widowed Lee Jeongmin prepares to meet someone from a photography group. Solitude, grief, personal rhythms and mismatched expectations do not disappear on a date.
+- Two additional standalone stories per new group include a divorced 71-year-old who prefers separate homes. These protagonists do not describe every player of that age.
+- **연령 선택 안 함** records no inferred participant age. It continues the current fictional age's unfinished seasons, then moves to another age. Once all seasons are complete, standalone age groups rotate by date. Existing progress is shared with explicit age selection.
+- New events use `age: "unspecified"` for a skipped age; `story_age` always identifies the fictional protagonist's group. `age_schema_version: 2` identifies the new categories. Old `50s` rows without this version (or version 1) mean **50+**, not 50–59. Do not combine them as the same age category.
+- An old saved 50+ preference requires a new selection on the next unplayed day; existing daily outcomes and pending follow-up events retain their original age interpretation.
+- Preview a new season with `?preview=1&age=60s&s=1`, or skipped age with `?preview=1&age=unspecified&story_age=70s&s=1`. Previews never store progress or send collector events.
 
 ## How the counterfactual works
 
@@ -93,3 +103,4 @@ One rule keeps the endings believable: every detail an ending relies on should a
 - AI 등 현재의 생활 요소는 실제 갈등에 영향을 줄 때 쓴다. 이름만 최신 기술로 바꾸지 않는다.
 - 두 선택 모두 상황에서 가능한 행동이어야 한다. 같은 숨은 조건에서 인물, 일정, 정보와 물리적 제약을 유지하며 대안 결과를 쓴다.
 - 새 버전은 기존 선택 기록의 의미를 바꾸지 않도록 별도 ID와 버전으로 관리한다.
+
