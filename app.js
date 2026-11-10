@@ -184,10 +184,12 @@
       return { kind: "finale", season, picks: state.picks };
     }
     for (const season of seasonsFor(ageId)) {
-      const original = archivedSeasonsFor(ageId).find((s) => s.id === season.replaces);
-      // A player who already lived the original proceeds to the new life instead
-      // of replaying revised versions of the same five days.
-      if (original && seasonState(original).picks.length) continue;
+      // A player who already lived any earlier version proceeds to the next life
+      // instead of replaying revised versions of the same five days.
+      // `replaces` is one archived id or a list of them.
+      const replaced = [].concat(season.replaces || []);
+      const lived = archivedSeasonsFor(ageId).some((s) => replaced.includes(s.id) && seasonState(s).picks.length);
+      if (lived) continue;
       const state = seasonState(season);
       const done = state.picks.length;
       if (done < season.episodes.length) return episodePlan(season, done, state.picks[done - 1]);

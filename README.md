@@ -20,18 +20,20 @@ Every age group has a season (`seasons.js`): five episodes, Monday to Friday, th
 
 ### 40대: more than one life
 
-New players start with **첫 학기** (season 2): a 42-year-old unmarried employee in their first semester of evening graduate school. Five episodes cover an optional company briefing, checking an AI draft's sources, disclosing a personal commitment at work, correcting AI meeting minutes and submitting a group assignment.
+New players start with **금요일 3시** (season 1, version 3): a school administrator with a spouse and child. Every day pulls on the same Friday, when the school steering committee and the child's school performance overlap: a forgotten recorder, briefing the colleague who could stand in, a promise at dinner, a leak near the meeting room, and the 2:50 decision.
 
-Next comes the revised **금요일 3시** (season 1, version 2): a school administrator with a spouse and child, coordinating responsibilities with family and colleagues before a Friday performance. The child's performance and the travel times stay consistent across the week. Choosing work is not a verdict on parenting.
+Next comes **첫 학기** (season 2, version 2): a 42-year-old employee in their first semester of evening graduate school. Every day pulls on the same midnight upload: who merges the file, an AI draft with a reference that may not exist, a team dinner, cutting 18 pages to 15, and the last 20 minutes.
 
-These are fictional roles, not assumptions about the player's household. A fresh 40대 session starts with season 2; preview links select a season by its `number`, not its position in the array.
+These are fictional roles, not assumptions about the player's household. Preview links select a season by its `number`, not its position in the array.
 
-Original `40s-s1` text is retained in `WADIF_SEASON_ARCHIVE`. Existing players finish that original season with unchanged outcomes, then receive the new life. They are not forced to replay its revised replacement, `40s-s1-v2`. Saved results and progress are never relabelled as new text.
+Story rules for every season (10 Nov 2026 rewrite): one rope per week, so each weekday pulls on Friday; the hidden condition decides the outcome of both choices and the protagonist cannot know it when choosing; an ending's last line comes from what happened that day.
+
+Earlier versions (`40s-s1`, `40s-s1-v2`, `40s-s2`, `60s-s1`, `70s-s1`) are retained in `WADIF_SEASON_ARCHIVE`. A player who started one finishes it with unchanged text; a player who lived any version a season `replaces` moves on instead of replaying the same week. Saved results and progress are never relabelled as new text.
 
 ### 60대 / 70대 이상 and optional age
 
-- **첫 공연 (60대):** 64-year-old retired Park Sunwoo prepares for a community band's first café performance. New pleasures, paid work, learning and friendships coexist without a successful-aging score.
-- **다음 약속 (70대 이상):** 73-year-old widowed Lee Jeongmin prepares to meet someone from a photography group. Solitude, grief, personal rhythms and mismatched expectations do not disappear on a date.
+- **첫 공연 (60대):** 64-year-old retired sales director Park Sunwoo plays bass in a neighbourhood band's first café performance. The poster blurb, a paid consulting call, a hard bass break, an old colleague and an encore all lead to Friday night.
+- **다음 약속 (70대 이상):** a 73-year-old who lost their spouse six years ago meets Yunseo from a photography group for coffee on Friday. Choosing the café, an unanswered photo, telling their daughter, a proposed walk, and whether to ask for a next meeting.
 - Two additional standalone stories per new group include a divorced 71-year-old who prefers separate homes. These protagonists do not describe every player of that age.
 - **연령 선택 안 함** records no inferred participant age. It continues the current fictional age's unfinished seasons, then moves to another age. Once all seasons are complete, standalone age groups rotate by date. Existing progress is shared with explicit age selection.
 - New events use `age: "unspecified"` for a skipped age; `story_age` always identifies the fictional protagonist's group. `age_schema_version: 2` identifies the new categories. Old `50s` rows without this version (or version 1) mean **50+**, not 50–59. Do not combine them as the same age category.

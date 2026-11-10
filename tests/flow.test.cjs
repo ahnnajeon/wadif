@@ -456,9 +456,37 @@ async function revisedSeasonChecks(seasons) {
   const oldPicks = Array.from({ length: 5 }, () => ({ choice: 0, k: 0, date: "2026-10-01" }));
   stored.set("wadif:season:40s-s1", JSON.stringify({ picks: oldPicks, finale: null }));
   assert.match(makeSession("2026-11-03T12:00:00").get("eyebrow").textContent, /이번 주 결산/);
-  assert.equal(makeSession("2026-11-04T12:00:00").get("title").textContent, "자율 참석");
+  // The revised 금요일 3시 (v3) is skipped for someone who lived the original.
+  assert.equal(makeSession("2026-11-04T12:00:00").get("title").textContent, "꼼꼼하실 것 같아서요");
   stored.set("wadif:season:40s-s2", JSON.stringify({ picks: oldPicks, finale: "2026-11-10" }));
   assert.match(makeSession("2026-11-11T12:00:00").get("eyebrow").textContent, /오늘의 갈림길/);
+
+  // 11월 10일 rewrite: a new player starts 시즌 1, someone mid-way through a
+  // replaced version finishes that text, and anyone who lived any replaced
+  // version moves on instead of replaying the same week.
+  stored.clear();
+  stored.set("wadif:age", "40s");
+  const fresh = makeSession("2026-11-11T12:00:00");
+  assert.equal(fresh.get("title").textContent, "두고 간 리코더");
+  assert.match(fresh.get("dayTag").textContent, /시즌 1 · 1 \/ 5/);
+  const twoPicks = oldPicks.slice(0, 2);
+  stored.set("wadif:season:40s-s1-v2", JSON.stringify({ picks: twoPicks, finale: null }));
+  assert.equal(makeSession("2026-11-12T12:00:00").get("title").textContent, "참석 예정");
+  stored.set("wadif:season:40s-s1-v2", JSON.stringify({ picks: oldPicks, finale: "2026-11-12" }));
+  assert.equal(makeSession("2026-11-13T12:00:00").get("title").textContent, "꼼꼼하실 것 같아서요");
+  stored.set("wadif:season:40s-s2", JSON.stringify({ picks: twoPicks, finale: null }));
+  assert.equal(makeSession("2026-11-14T12:00:00").get("title").textContent, "개인 일정");
+  for (const [age, oldId, newFirst, oldThird] of [["60s", "60s-s1", "소개 한 줄", "원곡의 명예"], ["70s", "70s-s1", "장소", "사진 옆의 자리"]]) {
+    stored.clear();
+    stored.set("wadif:age", age);
+    assert.equal(makeSession("2026-11-11T12:00:00").get("title").textContent, newFirst);
+    stored.set(`wadif:season:${oldId}`, JSON.stringify({ picks: twoPicks, finale: null }));
+    assert.equal(makeSession("2026-11-12T12:00:00").get("title").textContent, oldThird);
+    stored.set(`wadif:season:${oldId}`, JSON.stringify({ picks: oldPicks, finale: "2026-11-12" }));
+    assert.match(makeSession("2026-11-13T12:00:00").get("eyebrow").textContent, /오늘의 갈림길/);
+  }
+  stored.clear();
+  stored.set("wadif:age", "40s");
 
   // Same number of A choices, different days: the closing scenes must differ.
   // Flipping the week retains the server outage (condition 2), including in its
@@ -468,10 +496,10 @@ async function revisedSeasonChecks(seasons) {
   const first = makeSession("2026-11-12T12:00:00", "?preview=1&age=40s&season=2&s=finale&path=A1A1A1B1B2");
   const second = makeSession("2026-11-12T12:00:00", "?preview=1&age=40s&season=2&s=finale&path=B1A1A1B1A2");
   assert.notEqual(first.get("storyText").textContent, second.get("storyText").textContent);
-  assert.match(first.get("storyText").textContent, /아직 접수는 확정되지 않았다/);
-  assert.match(second.get("storyText").textContent, /장애 공지보다 4분 빠르다/);
+  assert.match(first.get("storyText").textContent, /이틀 더 고칠 수 있다/);
+  assert.match(second.get("storyText").textContent, /연장은 제출한 사람에게도 공평하게 왔다/);
   clickLabel(first.get("actions"), "모든 날 반대로 골랐다면? ↗");
-  assert.match(first.get("storyText").textContent, /장애 공지보다 4분 빠르다/);
+  assert.match(first.get("storyText").textContent, /연장은 제출한 사람에게도 공평하게 왔다/);
   assert.doesNotMatch(first.get("eyebrow").textContent, /가족|일 쪽|번/);
   assert.deepEqual([...stored], [...before]);
   assert.equal(sent.length, beforeSent);
